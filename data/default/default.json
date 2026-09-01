@@ -1,0 +1,532 @@
+{
+  "schema": {
+    "entities": [
+      {
+        "id": "editora",
+        "name": "Editora",
+        "fields": [
+          {
+            "id": "editora_id",
+            "name": "id",
+            "type": "INTEGER",
+            "isPK": true,
+            "isFK": false
+          },
+          {
+            "id": "editora_nome",
+            "name": "nome",
+            "type": "VARCHAR(150)",
+            "isPK": false,
+            "isFK": false
+          },
+          {
+            "id": "editora_pais",
+            "name": "pais",
+            "type": "VARCHAR(80)",
+            "isPK": false,
+            "isFK": false
+          }
+        ]
+      },
+      {
+        "id": "categoria",
+        "name": "Categoria",
+        "fields": [
+          {
+            "id": "cat_id",
+            "name": "id",
+            "type": "INTEGER",
+            "isPK": true,
+            "isFK": false
+          },
+          {
+            "id": "cat_nome",
+            "name": "nome",
+            "type": "VARCHAR(100)",
+            "isPK": false,
+            "isFK": false
+          },
+          {
+            "id": "cat_descricao",
+            "name": "descricao",
+            "type": "TEXT",
+            "isPK": false,
+            "isFK": false
+          }
+        ]
+      },
+      {
+        "id": "autor",
+        "name": "Autor",
+        "fields": [
+          {
+            "id": "autor_id",
+            "name": "id",
+            "type": "INTEGER",
+            "isPK": true,
+            "isFK": false
+          },
+          {
+            "id": "autor_nome",
+            "name": "nome",
+            "type": "VARCHAR(150)",
+            "isPK": false,
+            "isFK": false
+          },
+          {
+            "id": "autor_nacionalidade",
+            "name": "nacionalidade",
+            "type": "VARCHAR(80)",
+            "isPK": false,
+            "isFK": false
+          }
+        ]
+      },
+      {
+        "id": "livro",
+        "name": "Livro",
+        "fields": [
+          {
+            "id": "livro_id",
+            "name": "id",
+            "type": "INTEGER",
+            "isPK": true,
+            "isFK": false
+          },
+          {
+            "id": "livro_titulo",
+            "name": "titulo",
+            "type": "VARCHAR(200)",
+            "isPK": false,
+            "isFK": false
+          },
+          {
+            "id": "livro_isbn",
+            "name": "isbn",
+            "type": "CHAR(13)",
+            "isPK": false,
+            "isFK": false
+          },
+          {
+            "id": "livro_ano_publicacao",
+            "name": "ano_publicacao",
+            "type": "SMALLINT",
+            "isPK": false,
+            "isFK": false
+          },
+          {
+            "id": "livro_editora_id",
+            "name": "editora_id",
+            "type": "INTEGER",
+            "isPK": false,
+            "isFK": true,
+            "referencedEntityId": "editora"
+          },
+          {
+            "id": "livro_categoria_id",
+            "name": "categoria_id",
+            "type": "INTEGER",
+            "isPK": false,
+            "isFK": true,
+            "referencedEntityId": "categoria"
+          }
+        ]
+      },
+      {
+        "id": "livro_autor",
+        "name": "LivroAutor",
+        "fields": [
+          {
+            "id": "la_livro_id",
+            "name": "livro_id",
+            "type": "INTEGER",
+            "isPK": true,
+            "isFK": true,
+            "referencedEntityId": "livro"
+          },
+          {
+            "id": "la_autor_id",
+            "name": "autor_id",
+            "type": "INTEGER",
+            "isPK": true,
+            "isFK": true,
+            "referencedEntityId": "autor"
+          },
+          {
+            "id": "la_ordem",
+            "name": "ordem",
+            "type": "SMALLINT",
+            "isPK": false,
+            "isFK": false
+          }
+        ]
+      },
+      {
+        "id": "usuario",
+        "name": "Usuário",
+        "fields": [
+          {
+            "id": "usuario_id",
+            "name": "id",
+            "type": "INTEGER",
+            "isPK": true,
+            "isFK": false
+          },
+          {
+            "id": "usuario_nome",
+            "name": "nome",
+            "type": "VARCHAR(150)",
+            "isPK": false,
+            "isFK": false
+          },
+          {
+            "id": "usuario_email",
+            "name": "email",
+            "type": "VARCHAR(200)",
+            "isPK": false,
+            "isFK": false
+          },
+          {
+            "id": "usuario_data_cadastro",
+            "name": "data_cadastro",
+            "type": "DATE",
+            "isPK": false,
+            "isFK": false
+          }
+        ]
+      },
+      {
+        "id": "emprestimo",
+        "name": "Empréstimo",
+        "fields": [
+          {
+            "id": "emp_id",
+            "name": "id",
+            "type": "INTEGER",
+            "isPK": true,
+            "isFK": false
+          },
+          {
+            "id": "emp_usuario_id",
+            "name": "usuario_id",
+            "type": "INTEGER",
+            "isPK": false,
+            "isFK": true,
+            "referencedEntityId": "usuario"
+          },
+          {
+            "id": "emp_livro_id",
+            "name": "livro_id",
+            "type": "INTEGER",
+            "isPK": false,
+            "isFK": true,
+            "referencedEntityId": "livro"
+          },
+          {
+            "id": "emp_data_emp",
+            "name": "data_emprestimo",
+            "type": "DATE",
+            "isPK": false,
+            "isFK": false
+          },
+          {
+            "id": "emp_data_dev",
+            "name": "data_devolucao",
+            "type": "DATE",
+            "isPK": false,
+            "isFK": false
+          }
+        ]
+      },
+      {
+        "id": "multa",
+        "name": "Multa",
+        "fields": [
+          {
+            "id": "multa_id",
+            "name": "id",
+            "type": "INTEGER",
+            "isPK": true,
+            "isFK": false
+          },
+          {
+            "id": "multa_emp_id",
+            "name": "emprestimo_id",
+            "type": "INTEGER",
+            "isPK": false,
+            "isFK": true,
+            "referencedEntityId": "emprestimo"
+          },
+          {
+            "id": "multa_valor",
+            "name": "valor",
+            "type": "DECIMAL(10,2)",
+            "isPK": false,
+            "isFK": false
+          },
+          {
+            "id": "multa_paga",
+            "name": "paga",
+            "type": "BOOLEAN",
+            "isPK": false,
+            "isFK": false
+          }
+        ]
+      },
+      {
+        "id": "reserva",
+        "name": "Reserva",
+        "fields": [
+          {
+            "id": "reserva_id",
+            "name": "id",
+            "type": "INTEGER",
+            "isPK": true,
+            "isFK": false
+          },
+          {
+            "id": "reserva_usu_id",
+            "name": "usuario_id",
+            "type": "INTEGER",
+            "isPK": false,
+            "isFK": true,
+            "referencedEntityId": "usuario"
+          },
+          {
+            "id": "reserva_liv_id",
+            "name": "livro_id",
+            "type": "INTEGER",
+            "isPK": false,
+            "isFK": true,
+            "referencedEntityId": "livro"
+          },
+          {
+            "id": "reserva_data",
+            "name": "data_reserva",
+            "type": "DATE",
+            "isPK": false,
+            "isFK": false
+          },
+          {
+            "id": "reserva_status",
+            "name": "status",
+            "type": "VARCHAR(20)",
+            "isPK": false,
+            "isFK": false
+          }
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "id": "rel_editora_livro",
+        "fromEntityId": "editora",
+        "toEntityId": "livro",
+        "fromCardinality": "ONE",
+        "toCardinality": "MANY",
+        "label": "publica"
+      },
+      {
+        "id": "rel_categoria_livro",
+        "fromEntityId": "categoria",
+        "toEntityId": "livro",
+        "fromCardinality": "ONE",
+        "toCardinality": "ZERO_OR_MANY",
+        "label": "classifica"
+      },
+      {
+        "id": "rel_livro_autor_livro",
+        "fromEntityId": "livro",
+        "toEntityId": "livro_autor",
+        "fromCardinality": "ONE",
+        "toCardinality": "MANY"
+      },
+      {
+        "id": "rel_livro_autor_autor",
+        "fromEntityId": "autor",
+        "toEntityId": "livro_autor",
+        "fromCardinality": "ONE",
+        "toCardinality": "MANY"
+      },
+      {
+        "id": "rel_emprestimo_usuario",
+        "fromEntityId": "usuario",
+        "toEntityId": "emprestimo",
+        "fromCardinality": "ONE",
+        "toCardinality": "MANY",
+        "label": "realiza"
+      },
+      {
+        "id": "rel_emprestimo_livro",
+        "fromEntityId": "livro",
+        "toEntityId": "emprestimo",
+        "fromCardinality": "ONE",
+        "toCardinality": "MANY"
+      },
+      {
+        "id": "rel_emprestimo_multa",
+        "fromEntityId": "emprestimo",
+        "toEntityId": "multa",
+        "fromCardinality": "ONE",
+        "toCardinality": "ZERO_OR_ONE",
+        "label": "gera"
+      },
+      {
+        "id": "rel_usuario_reserva",
+        "fromEntityId": "usuario",
+        "toEntityId": "reserva",
+        "fromCardinality": "ONE_AND_ONLY_ONE",
+        "toCardinality": "ONE_OR_MANY",
+        "label": "reserva"
+      }
+    ]
+  },
+  "entityPositions": {
+    "editora": {
+      "x": -279.4761904761905,
+      "y": 121.09523809523807,
+      "width": 220,
+      "height": 128
+    },
+    "categoria": {
+      "x": 360.04761904761904,
+      "y": 106.4285714285714,
+      "width": 220,
+      "height": 128
+    },
+    "autor": {
+      "x": 668,
+      "y": -55,
+      "width": 220,
+      "height": 128
+    },
+    "livro": {
+      "x": 75.7142857142857,
+      "y": 401.1428571428571,
+      "width": 220,
+      "height": 212
+    },
+    "livro_autor": {
+      "x": 632.9047619047618,
+      "y": 200.9047619047619,
+      "width": 220,
+      "height": 128
+    },
+    "usuario": {
+      "x": 993,
+      "y": 319,
+      "width": 220,
+      "height": 156
+    },
+    "emprestimo": {
+      "x": 55.38095238095239,
+      "y": 793.5238095238096,
+      "width": 220,
+      "height": 184
+    },
+    "multa": {
+      "x": 554,
+      "y": 805,
+      "width": 220,
+      "height": 156
+    },
+    "reserva": {
+      "x": 931.0952380952381,
+      "y": 695.2857142857143,
+      "width": 220,
+      "height": 184
+    }
+  },
+  "layout": {
+    "connectorStyle": "orthogonal",
+    "notationStyle": "crowsfoot",
+    "canvasOffset": {
+      "x": 726,
+      "y": 361
+    },
+    "canvasScale": 1.1600000000000001,
+    "codeFormat": "dbml",
+    "codePanelOpen": true
+  },
+  "connectorPoints": {
+    "rel_emprestimo_multa": {
+      "to": {
+        "entityId": "multa",
+        "side": "left",
+        "fraction": 0.8333333333333334
+      },
+      "from": {
+        "entityId": "emprestimo",
+        "side": "right",
+        "fraction": 0.831004140786749
+      }
+    },
+    "rel_categoria_livro": {
+      "to": {
+        "entityId": "livro",
+        "side": "top",
+        "fraction": 0.7363636363636363
+      },
+      "from": {
+        "entityId": "categoria",
+        "side": "left",
+        "fraction": 0.4613095238095237
+      }
+    },
+    "rel_editora_livro": {
+      "to": {
+        "entityId": "livro",
+        "side": "top",
+        "fraction": 0.21363636363636362
+      }
+    },
+    "rel_livro_autor_autor": {
+      "to": {
+        "entityId": "livro_autor",
+        "side": "top",
+        "fraction": 0.4409090909090909
+      }
+    },
+    "rel_emprestimo_livro": {
+      "to": {
+        "entityId": "emprestimo",
+        "side": "top",
+        "fraction": 0.5924242424242423
+      }
+    },
+    "rel_livro_autor_livro": {
+      "to": {
+        "entityId": "livro_autor",
+        "side": "left",
+        "fraction": 0.5602678571428572
+      },
+      "from": {
+        "entityId": "livro",
+        "side": "right",
+        "fraction": 0.49438454627133865
+      }
+    }
+  },
+  "labelPositions": {
+    "rel_categoria_livro": {
+      "fraction": 0.7331785397612454,
+      "perp": -20.75715899225171
+    },
+    "rel_editora_livro": {
+      "fraction": 0.40294927450549817,
+      "perp": -26.394034490227902
+    },
+    "rel_emprestimo_usuario": {
+      "fraction": 0.42245277755662525,
+      "perp": 39.07869721883691
+    },
+    "rel_emprestimo_multa": {
+      "fraction": 0.47020024402497657,
+      "perp": 26.921578950568687
+    },
+    "rel_usuario_reserva": {
+      "fraction": 0.9863676973537873,
+      "perp": 55.85440894136925
+    }
+  }
+}

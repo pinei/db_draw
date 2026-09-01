@@ -1,0 +1,124 @@
+/* ─── Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+body, html, #app {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ─── Design tokens (light theme) ───────────────────────────────────────── */
+:root {
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+
+  /* Canvas */
+  --c-canvas-bg: #f0f2f5;
+
+  /* Entity card */
+  --c-entity-bg: #ffffff;
+  --c-entity-border: #d0d7de;
+  --c-entity-border-hover: #4a90d9;
+
+  /* Header */
+  --c-header-bg: #1e3a5f;
+  --c-header-fg: #e8f0fe;
+
+  /* Field rows */
+  --c-field-divider: #f0f0f0;
+  --c-field-name: #1a1a2e;
+  --c-field-type: #6b7280;
+  --c-pk-row: #fffbeb;
+  --c-fk-row: #f0f9ff;
+
+  /* Badges */
+  --c-pk-badge-bg: #f59e0b;
+  --c-pk-badge-fg: #ffffff;
+  --c-fk-badge-bg: #3b82f6;
+  --c-fk-badge-fg: #ffffff;
+
+  /* Connectors */
+  --c-connector: #6b7280;
+  --c-connector-hover: #1e3a5f;
+  --c-connector-label: #374151;
+
+  /* Settings panel */
+  --c-panel-bg: #ffffff;
+  --c-panel-border: #e5e7eb;
+  --c-panel-label: #9ca3af;
+
+  /* Buttons */
+  --c-btn-bg: #f9fafb;
+  --c-btn-fg: #374151;
+  --c-btn-border: #d1d5db;
+  --c-btn-hover-bg: #f3f4f6;
+  --c-btn-active-bg: #1e3a5f;
+  --c-btn-active-fg: #ffffff;
+  --c-btn-active-border: #1e3a5f;
+}
+
+/* ─── Dark theme ─────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-canvas-bg: #0d1117;
+
+    --c-entity-bg: #161b22;
+    --c-entity-border: #30363d;
+    --c-entity-border-hover: #58a6ff;
+
+    --c-header-bg: #0e2240;
+    --c-header-fg: #cae0ff;
+
+    --c-field-divider: #21262d;
+    --c-field-name: #e6edf3;
+    --c-field-type: #8b949e;
+    --c-pk-row: #272215;
+    --c-fk-row: #0d1f33;
+
+    --c-pk-badge-bg: #d97706;
+    --c-pk-badge-fg: #ffffff;
+    --c-fk-badge-bg: #2563eb;
+    --c-fk-badge-fg: #ffffff;
+
+    --c-connector: #8b949e;
+    --c-connector-hover: #58a6ff;
+    --c-connector-label: #8b949e;
+
+    --c-panel-bg: #161b22;
+    --c-panel-border: #30363d;
+    --c-panel-label: #6e7681;
+
+    --c-btn-bg: #21262d;
+    --c-btn-fg: #c9d1d9;
+    --c-btn-border: #30363d;
+    --c-btn-hover-bg: #30363d;
+    --c-btn-active-bg: #1f6feb;
+    --c-btn-active-fg: #ffffff;
+    --c-btn-active-border: #388bfd;
+  }
+}
+
+/* ─── Connector interaction state ───────────────────────────────────────── */
+.er-connector.dimmed {
+  opacity: 0.2;
+  transition: opacity 0.1s ease;
+}
+
+/* ─── Connector drag handles ────────────────────────────────────────────────── */
+.connector-handle {
+  fill: var(--c-connector-hover);
+  opacity: 0.8;
+  cursor: grab;
+  transition: r 0.1s ease, opacity 0.1s ease;
+}
+
+.connector-handle:hover {
+  r: 7;
+  opacity: 1;
+  cursor: grabbing;
+}
+
+.connector-handle:active {
+  cursor: grabbing;
+}

@@ -1,0 +1,64 @@
+erDiagram
+  Editora {
+    INTEGER id PK
+    VARCHAR nome
+    VARCHAR pais
+  }
+  Categoria {
+    INTEGER id PK
+    VARCHAR nome
+    TEXT descricao
+  }
+  Autor {
+    INTEGER id PK
+    VARCHAR nome
+    VARCHAR nacionalidade
+  }
+  Livro {
+    INTEGER id PK
+    VARCHAR titulo
+    CHAR isbn
+    SMALLINT ano_publicacao
+    INTEGER editora_id FK
+    INTEGER categoria_id FK
+  }
+  LivroAutor {
+    INTEGER livro_id PK
+    INTEGER autor_id PK
+    SMALLINT ordem
+  }
+  Usuário {
+    INTEGER id PK
+    VARCHAR nome
+    VARCHAR email
+    DATE data_cadastro
+  }
+  Empréstimo {
+    INTEGER id PK
+    INTEGER usuario_id FK
+    INTEGER livro_id FK
+    DATE data_emprestimo
+    DATE data_devolucao
+  }
+  Multa {
+    INTEGER id PK
+    INTEGER emprestimo_id FK
+    DECIMAL valor
+    BOOLEAN paga
+  }
+  Reserva {
+    INTEGER id PK
+    INTEGER usuario_id FK
+    INTEGER livro_id FK
+    DATE data_reserva
+    VARCHAR status
+  }
+
+  Editora ||--|{ Livro : "publica"
+  Categoria ||--o{ Livro : "classifica"
+  Livro ||--|{ LivroAutor : ""
+  Autor ||--|{ LivroAutor : ""
+  Usuário ||--|{ Empréstimo : "realiza"
+  Livro ||--|{ Empréstimo : ""
+  Empréstimo ||--o| Multa : "gera"
+  Usuário ||--|{ Reserva : "reserva"
