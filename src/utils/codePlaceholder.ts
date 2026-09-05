@@ -1,4 +1,4 @@
-import type { ErSchema, ErField, ErRelationship, Cardinality } from '../model/types'
+import type { ErSchema, ErField, ErRelationship, Cardinality, LogicalCardinality } from '../model/types'
 
 // ─── DBML serializer ─────────────────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ export function generateDbml(schema: ErSchema): string {
 
 // Maps cardinality pair to DBML ref operator
 function cardinalityToDbmlOp(from: Cardinality, to: Cardinality): string {
-  const isMany = (c: Cardinality) => c === 'MANY' || c === 'ZERO_OR_MANY' || c === 'ONE_OR_MANY'
+  const isMany = (c: Cardinality | LogicalCardinality) => c === 'MANY' || c === 'ZERO_OR_MANY' || c === 'ONE_OR_MANY'
   if (isMany(from) && isMany(to)) return '<>'
   if (isMany(from)) return '>'
   if (isMany(to))   return '<'
@@ -48,13 +48,13 @@ function mermaidFieldLine(f: ErField): string {
   return `    ${type} ${f.name}${pkfk}`
 }
 
-function cardinalityToMermaid(c: Cardinality, side: 'from' | 'to'): string {
+function cardinalityToMermaid(c: Cardinality | LogicalCardinality, side: 'from' | 'to'): string {
   // Returns the Mermaid half-connector symbol for a given side
+  // (MANY is a logical placeholder kept for future use)
   switch (c) {
-    case 'ONE':              return side === 'from' ? '||' : '||'
-    case 'ONE_AND_ONLY_ONE': return side === 'from' ? '||' : '||'
-    case 'MANY':             return side === 'from' ? '}|' : '|{'
-    case 'ONE_OR_MANY':      return side === 'from' ? '}|' : '|{'
+    case 'ONE':         return '||'
+    case 'MANY':        return side === 'from' ? '}|' : '|{'
+    case 'ONE_OR_MANY': return side === 'from' ? '}|' : '|{'
     case 'ZERO_OR_ONE':  return side === 'from' ? '|o' : 'o|'
     case 'ZERO_OR_MANY': return side === 'from' ? '}o' : 'o{'
   }

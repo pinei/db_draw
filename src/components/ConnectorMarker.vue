@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import type { NotationStyle, Cardinality } from '../model/types'
+import type { NotationStyle, Cardinality, LogicalCardinality } from '../model/types'
 
 defineProps<{ notationStyle: NotationStyle }>()
 
-// All cardinalities — used to generate the (empty) min-max markers
-const cardinalities: Cardinality[] = ['ONE', 'ONE_AND_ONLY_ONE', 'MANY', 'ONE_OR_MANY', 'ZERO_OR_ONE', 'ZERO_OR_MANY']
+// All renderable cardinalities (specialized + logical placeholders) —
+// used to generate the (empty) min-max markers
+const cardinalities: (Cardinality | LogicalCardinality)[] = ['ONE', 'MANY', 'ONE_OR_MANY', 'ZERO_OR_ONE', 'ZERO_OR_MANY']
 
 // Barker groups: plain ends for "one" sides, crow's foot for "many" sides
 // (line style solid/dotted is set per half-path by ErConnector)
-const barkerPlain: Cardinality[] = ['ONE', 'ONE_AND_ONLY_ONE', 'ZERO_OR_ONE']
-const barkerFoot: Cardinality[] = ['MANY', 'ONE_OR_MANY', 'ZERO_OR_MANY']
+const barkerPlain: (Cardinality | LogicalCardinality)[] = ['ONE', 'ZERO_OR_ONE']
+const barkerFoot: (Cardinality | LogicalCardinality)[] = ['MANY', 'ONE_OR_MANY', 'ZERO_OR_MANY']
 
 // Marker IDs follow the pattern: `{prefix}-{Cardinality}-{end|start}`
 // e.g. cf-MANY-end, bar-ONE-start (see AGENTS.md)
@@ -27,16 +28,7 @@ const barkerFoot: Cardinality[] = ['MANY', 'ONE_OR_MANY', 'ZERO_OR_MANY']
       <marker id="cf-ONE-start" markerWidth="10" markerHeight="12" refX="2" refY="6" orient="auto-start-reverse">
         <line x1="2" y1="1" x2="2" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
       </marker>
-      <!-- ONE_AND_ONLY_ONE: double vertical bar -->
-      <marker id="cf-ONE_AND_ONLY_ONE-end"   markerWidth="10" markerHeight="12" refX="8" refY="6" orient="auto">
-        <line x1="8" y1="1" x2="8" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
-        <line x1="3" y1="1" x2="3" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="cf-ONE_AND_ONLY_ONE-start" markerWidth="10" markerHeight="12" refX="7"  refY="6" orient="auto-start-reverse">
-        <line x1="7" y1="1" x2="7" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
-        <line x1="2" y1="1" x2="2" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <!-- MANY: crow's foot — tips spread at entity, leg converges toward connector -->
+      <!-- MANY (logical placeholder): crow's foot — tips spread at entity, leg converges toward connector -->
       <marker id="cf-MANY-end"   markerWidth="13" markerHeight="12" refX="11" refY="6" orient="auto">
         <line x1="3" y1="6" x2="11" y2="1"  stroke="var(--c-connector)" stroke-width="1.5" />
         <line x1="3" y1="6" x2="11" y2="6"  stroke="var(--c-connector)" stroke-width="1.5" />

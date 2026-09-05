@@ -54,11 +54,11 @@ erDiagram
     VARCHAR status
   }
 
-  Editora ||--|{ Livro : "publica"
+  Editora ||--o{ Livro : "publica"
   Categoria ||--o{ Livro : "classifica"
-  Livro ||--|{ LivroAutor : ""
-  Autor ||--|{ LivroAutor : ""
-  Usuário ||--|{ Empréstimo : "realiza"
-  Livro ||--|{ Empréstimo : ""
+  Livro ||--o{ LivroAutor : ""
+  Autor ||--o{ LivroAutor : ""
+  Usuário ||--o{ Empréstimo : "realiza"
+  Livro ||--o{ Empréstimo : ""
   Empréstimo ||--o| Multa : "gera"
   Usuário ||--|{ Reserva : "reserva"

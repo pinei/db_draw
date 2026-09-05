@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
-import type { ErRelationship, EntityRect, ConnectorStyle, NotationStyle, Cardinality } from '../model/types'
+import type { ErRelationship, EntityRect, ConnectorStyle, NotationStyle, Cardinality, LogicalCardinality } from '../model/types'
 import { getConnectionPoints, snapToEntityEdge, resolveLabelPosition, minMaxLabelPosition } from '../utils/connectionPoints'
 import { bezierPath, orthogonalPath, splitBezierPath, splitOrthogonalPath } from '../utils/connectorPath'
 
@@ -45,7 +45,7 @@ const barkerHalves = computed(() => {
     : splitOrthogonalPath(source, target)
 })
 
-function isBarkerOptional(c: Cardinality): boolean {
+function isBarkerOptional(c: Cardinality | LogicalCardinality): boolean {
   return c === 'ZERO_OR_ONE' || c === 'ZERO_OR_MANY'
 }
 
@@ -53,14 +53,14 @@ const barkerFromOptional = computed(() => isBarkerOptional(props.relationship.fr
 const barkerToOptional = computed(() => isBarkerOptional(props.relationship.toCardinality))
 
 // Min-Max notation: plain line ends, cardinality shown as text near each end
-function cardinalityToMinMax(c: Cardinality): string {
+// (MANY is a logical placeholder kept for future use — rendered as bare many)
+function cardinalityToMinMax(c: Cardinality | LogicalCardinality): string {
   switch (c) {
-    case 'ONE':
-    case 'ONE_AND_ONLY_ONE': return '1'
-    case 'MANY':             return '*'
-    case 'ONE_OR_MANY':      return '1..*'
-    case 'ZERO_OR_ONE':      return '0..1'
-    case 'ZERO_OR_MANY':     return '0..*'
+    case 'ONE':         return '1'
+    case 'MANY':        return '*'
+    case 'ONE_OR_MANY': return '1..*'
+    case 'ZERO_OR_ONE': return '0..1'
+    case 'ZERO_OR_MANY': return '0..*'
   }
 }
 

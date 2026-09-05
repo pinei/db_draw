@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import type { DiagramState, PersistedDiagramState, ConnectorStyle, NotationStyle, CodeFormat, ThemeMode, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel } from '../model/types'
 import { bibliotecaSchema } from '../model/sampleData'
-import { saveModel } from '../utils/persist'
+import { saveModel, AuthError } from '../utils/persist'
+import { useAuthStore } from './auth'
 
 // Entity card dimensions used for initial layout
 const ENTITY_WIDTH = 220
@@ -217,7 +218,9 @@ export const useDiagramStore = defineStore('diagram', () => {
           await saveModel('default', state.value)
           saveStatus.value = 'saved'
           setTimeout(() => { saveStatus.value = 'idle' }, 2000)
-        } catch {
+        } catch (e) {
+          // Token revoked/expired elsewhere — back to the login screen
+          if (e instanceof AuthError) { useAuthStore().logout(); return }
           saveStatus.value = 'error'
         }
       }, 1500)

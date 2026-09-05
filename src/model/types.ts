@@ -1,6 +1,12 @@
 // ─── ER Schema (logical model — layout-agnostic) ────────────────────────────
 
-export type Cardinality = 'ONE' | 'ONE_AND_ONLY_ONE' | 'MANY' | 'ONE_OR_MANY' | 'ZERO_OR_ONE' | 'ZERO_OR_MANY'
+export type Cardinality = 'ONE' | 'ONE_OR_MANY' | 'ZERO_OR_ONE' | 'ZERO_OR_MANY'
+
+// Unspecialized placeholders for logical (early-stage) modeling, when the
+// optionality is not yet known. ONE doubles as the specialized exactly-one;
+// a bare MANY must be specialized to ONE_OR_MANY / ZERO_OR_MANY before use.
+// Kept (with their glyphs in every notation) for future use.
+export type LogicalCardinality = 'ONE' | 'MANY'
 
 export interface ErField {
   id: string

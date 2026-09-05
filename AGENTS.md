@@ -24,15 +24,16 @@ Não há lint nem teste automatizado configurado. O typecheck é feito pelo `vue
 ```
 src/
   main.ts                     # bootstrap: createApp + Pinia + mount
-  App.vue                     # compõe Canvas + CodePanel + SettingsPanel; carrega/semeia estado no mount
+  App.vue                     # gate de login + compõe Canvas/CodePanel/SettingsPanel; carrega/semeia estado após auth
   style.css                   # CSS global + variáveis (--c-*)
   model/
     types.ts                  # TODOS os tipos de domínio e apresentação (ErSchema, DiagramState, etc.)
     sampleData.ts             # schema de exemplo "biblioteca" (9 entidades, todas as cardinalidades)
   stores/
     diagram.ts                # Pinia store: estado central, getters, actions, auto-save debounced
+    auth.ts                   # sessão do usuário (email/token em localStorage) + login/logout
   utils/
-    persist.ts                # load/save via API local + validação de DBML (@dbml/parse)
+    persist.ts                # load/save via API local + validação de DBML (@dbml/parse) + auth API
     codePlaceholder.ts        # serializers DBML e Mermaid a partir de ErSchema
     connectionPoints.ts       # geometria de pontos de conexão, snap em arestas, posição de labels
     connectorPath.ts          # paths SVG: bezier (curved) e ortogonal (Manhattan)
@@ -41,14 +42,15 @@ src/
     ErEntity.vue              # card de entidade (foreignObject com HTML interno)
     ErConnector.vue           # linha de relação + markers + handles + label
     ConnectorMarker.vue       # <defs> com todos os markers SVG por notação/cardinalidade
-    SettingsPanel.vue         # controles de estilo/notação/zoom + status de save
+    SettingsPanel.vue         # controles de estilo/notação/zoom + usuário/logout + status de save
     CodePanel.vue             # painel de código DBML/Mermaid (edição + apply)
-  vite.config.ts              # plugin de persistência: API /api/models em middleware do dev server
+    LoginPanel.vue            # tela de login (e-mail + token, gerar token)
+  vite.config.ts              # plugins de auth (/api/auth) e persistência (/api/models) em middleware do dev server
 data/
-  default/
-    default.json              # estado persistido (DiagramState sem campos derivados)
-    default.dbml              # export DBML gerado
-    default.mermaid           # export Mermaid gerado
+  default/                    # legado pré-multiusuário (não mais usado como seed)
+  user/<dominio>/<nome>/
+    user.json                 # { email, token, createdAt, lastLoginAt } — NÃO versionado (ver .gitignore)
+    models/<nome>/            # um .json/.dbml/.mermaid por modelo (hoje só "default")
 docs/                         # imagens/assets de documentação
 ```
 
@@ -58,7 +60,8 @@ O modelo está dividido em **lógico** (schema) e **apresentação** (layout), a
 
 - `ErSchema` = `{ entities: ErEntity[]; relationships: ErRelationship[] }` — independe de layout.
 - `DiagramState` = schema + `entityPositions` + `layout` + `connectorPoints` + `labelPositions`.
-- `Cardinality`: `ONE | ONE_AND_ONLY_ONE | MANY | ONE_OR_MANY | ZERO_OR_ONE | ZERO_OR_MANY`.
+- `Cardinality`: `ONE | ONE_OR_MANY | ZERO_OR_ONE | ZERO_OR_MANY` (só combinações min/max reais; `ErRelationship` usa só essas).
+- `LogicalCardinality`: `'ONE' | 'MANY'` — placeholders não-especializados p/ modelagem lógica futura; os renderers aceitam `Cardinality | LogicalCardinality`, então os glifos do `MANY` existem em todas as notações mesmo sem uso atual.
 
 Regras importantes:
 - IDs de entidade/relação são strings; relacionamentos referenciam `fromEntityId`/`toEntityId`.
@@ -68,8 +71,11 @@ Regras importantes:
 
 ## Como as coisas funcionam
 
+### Autenticação multiusuário (dev apenas)
+Login com e-mail + token via `LoginPanel.vue` (gate no `App.vue`; sessão em `localStorage`, store `auth.ts`). Endpoints em `vite.config.ts`: `POST /api/auth/token {email}` (gera token, grava `user.json`, imprime o token no stdout — sem e-mail nesta fase) e `POST /api/auth/login {email, token}` (compara com `timingSafeEqual`). E-mail vira pasta `data/user/<dominio>/<nome>` (lowercase, validado contra path traversal). `GET/PUT /api/models/:name` exigem headers `X-User-Email`/`X-Auth-Token` e operam em `data/user/.../models/:name/`; 401 vira `AuthError` e desloga. Tokens em plaintext, sem expiração — débito assumido até a fase do e-mail.
+
 ### Persistência (dev apenas)
-A persistência é um middleware do Vite em `vite.config.ts`. Ela expõe `GET/PUT /api/models/:name` e grava arquivos em `data/:name/` (`.json`, `.dbml`, `.mermaid`). Só funciona com `npm run dev`; fora disso o app roda em memória silenciosamente (`App.vue` usa try/catch).
+A persistência é um middleware do Vite em `vite.config.ts`. Ela expõe `GET/PUT /api/models/:name` (autenticado, ver acima) e grava arquivos em `data/user/.../models/:name/` (`.json`, `.dbml`, `.mermaid`). Só funciona com `npm run dev`; fora disso o app roda em memória silenciosamente (`App.vue` usa try/catch). Primeiro login sem modelo → 404 → `App.vue` semeia do `sampleData` em memória.
 
 `saveModel` (em `utils/persist.ts`) anexa os campos derivados `_dbml` e `_mermaid` como side-channel; `loadModel` os remove ao ler. O auto-save é debounced (1.5s) via `watch(..., { deep: true })` na store.
 
@@ -89,7 +95,7 @@ A convenção de ID dos markers SVG é `{prefixo}-{Cardinality}-{end|start}`, on
 
 Exceção: `minmax` usa extremidades sem símbolo (markers `mm-*` vazios, gerados via `v-for`) e a cardinalidade vai como **texto** nas pontas (`1`, `0..1`, `*`, `1..*`, `0..*`), via `cardinalityToMinMax` em `ErConnector.vue`. O posicionamento é fixo e determinístico via `minMaxLabelPosition` em `connectionPoints.ts`: 20px da entidade (normal da aresta) + 12px da linha medidos da **borda** do texto (via `text-anchor`/`dominant-baseline` dinâmicos), lado externo = canto mais próximo, nunca relativo à direção da linha. Notação é só apresentação — os serializers DBML/Mermaid (baseados em cardinalidade) não mudam.
 
-Exceção: `barker` combina símbolo (pé-de-galinha só nos lados "muitos", markers `bar-*`) com estilo de linha por metade (sólida = mandatório, pontilhada = opcional). `ErConnector.vue` divide o path em duas metades (`splitBezierPath`/`splitOrthogonalPath` em `connectorPath.ts`: De Casteljau t=0.5 / ponto médio do comprimento) e aplica `barker-optional` por ponta. `MANY` (bare) conta como mandatório, consistente com os serializers.
+Exceção: `barker` combina símbolo (pé-de-galinha só nos lados "muitos", markers `bar-*`) com estilo de linha por metade (sólida = mandatório, pontilhada = opcional). `ErConnector.vue` divide o path em duas metades (`splitBezierPath`/`splitOrthogonalPath` em `connectorPath.ts`: De Casteljau t=0.5 / ponto médio do comprimento) e aplica `barker-optional` por ponta. `MANY` é `LogicalCardinality` (placeholder) e renderiza como mandatório-muitos, consistente com os serializers.
 
 ## Convenções de código
 

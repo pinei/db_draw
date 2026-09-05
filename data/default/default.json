@@ -323,7 +323,7 @@
         "fromEntityId": "editora",
         "toEntityId": "livro",
         "fromCardinality": "ONE",
-        "toCardinality": "MANY",
+        "toCardinality": "ZERO_OR_MANY",
         "label": "publica"
       },
       {
@@ -339,21 +339,21 @@
         "fromEntityId": "livro",
         "toEntityId": "livro_autor",
         "fromCardinality": "ONE",
-        "toCardinality": "MANY"
+        "toCardinality": "ZERO_OR_MANY"
       },
       {
         "id": "rel_livro_autor_autor",
         "fromEntityId": "autor",
         "toEntityId": "livro_autor",
         "fromCardinality": "ONE",
-        "toCardinality": "MANY"
+        "toCardinality": "ZERO_OR_MANY"
       },
       {
         "id": "rel_emprestimo_usuario",
         "fromEntityId": "usuario",
         "toEntityId": "emprestimo",
         "fromCardinality": "ONE",
-        "toCardinality": "MANY",
+        "toCardinality": "ZERO_OR_MANY",
         "label": "realiza"
       },
       {
@@ -361,7 +361,7 @@
         "fromEntityId": "livro",
         "toEntityId": "emprestimo",
         "fromCardinality": "ONE",
-        "toCardinality": "MANY"
+        "toCardinality": "ZERO_OR_MANY"
       },
       {
         "id": "rel_emprestimo_multa",
@@ -375,7 +375,7 @@
         "id": "rel_usuario_reserva",
         "fromEntityId": "usuario",
         "toEntityId": "reserva",
-        "fromCardinality": "ONE_AND_ONLY_ONE",
+        "fromCardinality": "ONE",
         "toCardinality": "ONE_OR_MANY",
         "label": "reserva"
       }
@@ -444,7 +444,7 @@
       "x": 405,
       "y": 252
     },
-    "canvasScale": 0.9999999999999983
+    "canvasScale": 1.0799999999999983
   },
   "connectorPoints": {
     "rel_emprestimo_multa": {

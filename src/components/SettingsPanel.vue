@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
+import { useAuthStore } from '../stores/auth'
 import type { ConnectorStyle, NotationStyle, ThemeMode } from '../model/types'
 
 const store = useDiagramStore()
+const auth = useAuthStore()
 const layout = computed(() => store.layout)
 
 const connectorOptions: { value: ConnectorStyle; label: string }[] = [
@@ -80,6 +82,15 @@ const themeOptions: { value: ThemeMode; label: string }[] = [
       </div>
     </div>
 
+    <div class="divider" />
+
+    <div class="panel-section">
+      <span class="section-label user-email" :title="auth.email ?? ''">{{ auth.email }}</span>
+      <div class="btn-group">
+        <button class="btn" @click="auth.logout()">Sair</button>
+      </div>
+    </div>
+
     <div class="save-status" :class="store.saveStatus">
       <span v-if="store.saveStatus === 'saving'">saving…</span>
       <span v-else-if="store.saveStatus === 'saved'">✓ saved</span>
@@ -129,6 +140,14 @@ const themeOptions: { value: ThemeMode; label: string }[] = [
 .divider {
   height: 1px;
   background: var(--c-panel-border);
+}
+
+.user-email {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-transform: none;
 }
 
 .btn-group {

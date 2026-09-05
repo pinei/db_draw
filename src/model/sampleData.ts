@@ -1,6 +1,6 @@
 import type { ErSchema } from './types'
 
-// Biblioteca domain — 9 entities covering all Cardinality values
+// Biblioteca domain — 9 entities covering all specialized Cardinality values
 export const bibliotecaSchema: ErSchema = {
   entities: [
     {
@@ -149,15 +149,15 @@ export const bibliotecaSchema: ErSchema = {
     },
   ],
 
-  // Relationships — covers all Cardinality values
+  // Relationships — covers all specialized Cardinality values
   relationships: [
-    // ONE → MANY
+    // ONE → ZERO_OR_MANY
     {
       id: 'rel_editora_livro',
       fromEntityId: 'editora',
       toEntityId: 'livro',
       fromCardinality: 'ONE',
-      toCardinality: 'MANY',
+      toCardinality: 'ZERO_OR_MANY',
       label: 'publica',
     },
     // ONE → ZERO_OR_MANY (categoria pode ter zero ou muitos livros)
@@ -174,21 +174,21 @@ export const bibliotecaSchema: ErSchema = {
       fromEntityId: 'livro',
       toEntityId: 'livro_autor',
       fromCardinality: 'ONE',
-      toCardinality: 'MANY',
+      toCardinality: 'ZERO_OR_MANY',
     },
     {
       id: 'rel_livro_autor_autor',
       fromEntityId: 'autor',
       toEntityId: 'livro_autor',
       fromCardinality: 'ONE',
-      toCardinality: 'MANY',
+      toCardinality: 'ZERO_OR_MANY',
     },
     {
       id: 'rel_emprestimo_usuario',
       fromEntityId: 'usuario',
       toEntityId: 'emprestimo',
       fromCardinality: 'ONE',
-      toCardinality: 'MANY',
+      toCardinality: 'ZERO_OR_MANY',
       label: 'realiza',
     },
     {
@@ -196,7 +196,7 @@ export const bibliotecaSchema: ErSchema = {
       fromEntityId: 'livro',
       toEntityId: 'emprestimo',
       fromCardinality: 'ONE',
-      toCardinality: 'MANY',
+      toCardinality: 'ZERO_OR_MANY',
     },
     // ONE → ZERO_OR_ONE (empréstimo pode gerar zero ou uma multa)
     {
@@ -207,12 +207,12 @@ export const bibliotecaSchema: ErSchema = {
       toCardinality: 'ZERO_OR_ONE',
       label: 'gera',
     },
-    // ONE_AND_ONLY_ONE → ONE_OR_MANY (cada reserva pertence a exatamente um usuário; usuário faz uma ou muitas reservas)
+    // ONE → ONE_OR_MANY (cada reserva pertence a exatamente um usuário; usuário faz uma ou muitas reservas)
     {
       id: 'rel_usuario_reserva',
       fromEntityId: 'usuario',
       toEntityId: 'reserva',
-      fromCardinality: 'ONE_AND_ONLY_ONE',
+      fromCardinality: 'ONE',
       toCardinality: 'ONE_OR_MANY',
       label: 'reserva',
     },
