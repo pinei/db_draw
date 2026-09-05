@@ -92,10 +92,13 @@ function buildInitialPositions(): Record<string, EntityRect> {
   return positions
 }
 
-export const useDiagramStore = defineStore('diagram', () => {
-  const state = ref<DiagramState>({
+// Factory for pristine state — deep-clones the sample schema so resets can
+// never cross-contaminate the module const (nor leak one user's diagram into
+// another user's freshly seeded folder via the in-memory state)
+function buildInitialState(): DiagramState {
+  return {
     meta: seedMeta(),
-    schema: bibliotecaSchema,
+    schema: structuredClone(bibliotecaSchema),
     entityPositions: buildInitialPositions(),
     layout: {
       connectorStyle: 'curved',
@@ -108,7 +111,11 @@ export const useDiagramStore = defineStore('diagram', () => {
     },
     connectorPoints: {},
     labelPositions: {},
-  })
+  }
+}
+
+export const useDiagramStore = defineStore('diagram', () => {
+  const state = ref<DiagramState>(buildInitialState())
 
   // Track which connector is hovered for visual feedback (opacity dimming of other connectors)
   const hoveredConnectorId = ref<string | null>(null)
@@ -277,6 +284,21 @@ export const useDiagramStore = defineStore('diagram', () => {
     if (patch.tags) state.value.meta.tags = sanitizeTags(patch.tags)
   }
 
+  // Drops ALL in-memory diagram data back to pristine defaults. Called on
+  // logout so the next login (possibly a different user) can never inherit —
+  // and, on a 404 seed, persist — the previous user's diagram.
+  function resetState() {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    state.value = buildInitialState()
+    hoveredConnectorId.value = null
+    draggingConnectorPoint.value = null
+    draggingLabel.value = null
+    saveStatus.value = 'idle'
+  }
+
   function loadState(loaded: PersistedDiagramState, modelId = 'default') {
     // UI preferences are not part of the diagram artifact — merge them back
     // from the in-memory defaults so a fresh load starts with sane UI state
@@ -310,10 +332,12 @@ export const useDiagramStore = defineStore('diagram', () => {
   }
 
   // Debounced auto-save — fires 1.5s after the last state mutation
+  // (never while logged out: no credentials → the PUT would 401 anyway)
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   watch(
     state,
     () => {
+      if (!useAuthStore().isAuthenticated) return
       if (saveTimer) clearTimeout(saveTimer)
       saveStatus.value = 'saving'
       saveTimer = setTimeout(async () => {
@@ -364,5 +388,6 @@ export const useDiagramStore = defineStore('diagram', () => {
     loadState,
     applyDbml,
     updateModelMeta,
+    resetState,
   }
 })

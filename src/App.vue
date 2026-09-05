@@ -43,7 +43,10 @@ async function initModel() {
     if (loaded) {
       store.loadState(loaded, 'default')
     } else {
-      // First run — seed the user folder with the current in-memory state
+      // First run — seed the user folder with PRISTINE defaults, never with
+      // whatever happens to sit in memory (another user's diagram after a
+      // logout→login switch without reload)
+      store.resetState()
       await saveModel('default', store.state)
     }
   } catch (e) {
@@ -64,7 +67,12 @@ watch(() => auth.isAuthenticated, (ok) => {
     initialized = true
     initModel()
   }
-  if (!ok) initialized = false
+  if (!ok) {
+    initialized = false
+    // Forget everything: the in-memory diagram belongs to the user who just
+    // left and must not leak into the next session's view or 404 seed
+    store.resetState()
+  }
 })
 </script>
 
