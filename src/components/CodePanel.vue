@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
 import { generateDbml, generateMermaid } from '../utils/codePlaceholder'
+import { highlightDbml, highlightMermaid } from '../utils/dbmlHighlight'
 import { validateDbml } from '../utils/persist'
 import type { CodeFormat } from '../model/types'
 
@@ -41,6 +42,45 @@ const codeText = computed(() =>
 
 const parseStatus = ref<'idle' | 'success' | 'error'>('idle')
 const parseMessage = ref('')
+
+// ─── Syntax highlighting (read-only <pre>, swapped in on focus) ─────────────
+// The highlighters only know the live schema's table names, so generated AND
+// hand-typed references highlight exactly. Editing swaps the <pre> for the
+// plain <textarea> (no fragile transparent-overlay scroll sync to maintain).
+
+const tableNames = computed(() => store.state.schema.entities.map((e) => e.name))
+
+const highlightedHtml = computed(() => {
+  const isDbml = layout.value.codeFormat === 'dbml'
+  const src = isDbml ? draftDbml.value : generateMermaid(store.state.schema)
+  const html = isDbml
+    ? highlightDbml(src, tableNames.value)
+    : highlightMermaid(src, tableNames.value)
+  // <pre> drops a trailing newline — keep it so the last line never collapses
+  return src.endsWith('\n') ? html + '\n' : html
+})
+
+const previewHint = computed(() =>
+  layout.value.codeFormat === 'dbml'
+    ? `${layout.value.codeFormat.toUpperCase()} code (highlighted — click to edit)`
+    : `${layout.value.codeFormat.toUpperCase()} code (highlighted, read-only)`,
+)
+
+const editing = ref(false)
+
+function startEdit() {
+  if (!isEditable.value || editing.value) return
+  editing.value = true
+  nextTick(() => textareaEl.value?.focus())
+}
+
+function stopEdit() {
+  editing.value = false
+}
+
+function blurOnEscape(e: KeyboardEvent) {
+  (e.target as HTMLTextAreaElement).blur()
+}
 
 function onInput(e: Event) {
   draftDbml.value = (e.target as HTMLTextAreaElement).value
@@ -91,15 +131,26 @@ function handleApply() {
         </div>
 
         <div class="code-area-wrapper">
-          <textarea
+          <pre
+            v-if="!editing"
+            class="code-preview"
+            :class="{ editable: isEditable }"
+            tabindex="0"
+            :aria-label="previewHint"
+            @click="startEdit"
+            @focus="startEdit"
+            v-html="highlightedHtml"
+          /><!--
+       --><textarea
+            v-else
             ref="textareaEl"
             class="code-area"
             :value="codeText"
-            :readonly="!isEditable"
-            :class="{ editable: isEditable }"
             spellcheck="false"
             :aria-label="`${layout.codeFormat.toUpperCase()} code`"
             @input="onInput"
+            @blur="stopEdit"
+            @keydown.escape="blurOnEscape"
           />
         </div>
 
@@ -259,6 +310,30 @@ function handleApply() {
   cursor: text;
 }
 
+/* Read-only highlighted view — same metrics as .code-area so focus/blur
+   swapping never shifts the layout; only the spans add color */
+.code-preview {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  background: var(--c-canvas-bg);
+  color: var(--c-field-name);
+  white-space: pre;
+  tab-size: 2;
+  overflow: auto;
+  cursor: default;
+  outline: none;
+}
+
+.code-preview.editable {
+  cursor: text;
+}
+
 .apply-btn {
   width: 100%;
   padding: 6px;
@@ -315,4 +390,26 @@ function handleApply() {
   max-height: 0;
   opacity: 0;
 }
+</style>
+
+<style>
+/* ── Highlight tokens (unscoped: spans are injected via v-html) ───────────── */
+.code-preview .tok-kw      { color: #1d4ed8; font-weight: 600; }
+.code-preview .tok-table   { color: #0f766e; }
+.code-preview .tok-type    { color: #15803d; }
+.code-preview .tok-pk      { color: #b45309; font-weight: 600; }
+.code-preview .tok-annot   { color: #475569; }
+.code-preview .tok-op      { color: #7c3aed; }
+.code-preview .tok-comment { color: var(--c-panel-label); font-style: italic; }
+.code-preview .tok-str     { color: #0e7490; }
+.code-preview .tok-num     { color: #9333ea; }
+
+html[data-theme='dark'] .code-preview .tok-kw      { color: #60a5fa; }
+html[data-theme='dark'] .code-preview .tok-table   { color: #2dd4bf; }
+html[data-theme='dark'] .code-preview .tok-type    { color: #4ade80; }
+html[data-theme='dark'] .code-preview .tok-pk      { color: #fbbf24; }
+html[data-theme='dark'] .code-preview .tok-annot   { color: #94a3b8; }
+html[data-theme='dark'] .code-preview .tok-op      { color: #c084fc; }
+html[data-theme='dark'] .code-preview .tok-str     { color: #22d3ee; }
+html[data-theme='dark'] .code-preview .tok-num     { color: #d8b4fe; }
 </style>

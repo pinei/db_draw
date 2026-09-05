@@ -43,7 +43,7 @@ src/
     ErConnector.vue           # linha de relação + markers + handles + label
     ConnectorMarker.vue       # <defs> com todos os markers SVG por notação/cardinalidade
     SettingsPanel.vue         # controles de estilo/notação/zoom + usuário/logout + status de save
-    CodePanel.vue             # painel de código DBML/Mermaid (edição + apply)
+    CodePanel.vue             # painel de código DBML/Mermaid (edição + apply + highlight read-only)
     LoginPanel.vue            # tela de login (e-mail + token, gerar token)
   vite.config.ts              # plugins de auth (/api/auth) e persistência (/api/models) em middleware do dev server
 data/
