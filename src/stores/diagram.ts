@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { DiagramState, ConnectorStyle, NotationStyle, CodeFormat, ThemeMode, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel } from '../model/types'
+import type { DiagramState, PersistedDiagramState, ConnectorStyle, NotationStyle, CodeFormat, ThemeMode, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel } from '../model/types'
 import { bibliotecaSchema } from '../model/sampleData'
 import { saveModel } from '../utils/persist'
 
@@ -186,8 +186,18 @@ export const useDiagramStore = defineStore('diagram', () => {
     draggingLabel.value = null
   }
 
-  function loadState(loaded: DiagramState) {
-    state.value = loaded
+  function loadState(loaded: PersistedDiagramState) {
+    // UI preferences are not part of the diagram artifact — merge them back
+    // from the in-memory defaults so a fresh load starts with sane UI state
+    state.value = {
+      ...loaded,
+      layout: {
+        codeFormat: 'dbml',
+        codePanelOpen: true,
+        theme: 'system',
+        ...loaded.layout,
+      },
+    }
   }
 
   // Debounced auto-save — fires 1.5s after the last state mutation

@@ -79,6 +79,18 @@ export interface DiagramState {
   labelPositions: Record<string, LabelPosition>
 }
 
+// ─── Persisted shapes (diagram artifact) ───────────────────────────────────
+
+// Keys of DiagramLayout that are UI preferences, not diagram properties —
+// they live in memory only and are stripped before writing data/:name/*.json.
+export type UiPreferenceKey = 'codeFormat' | 'codePanelOpen' | 'theme'
+
+export type PersistedDiagramLayout = Omit<DiagramLayout, UiPreferenceKey>
+
+export interface PersistedDiagramState extends Omit<DiagramState, 'layout'> {
+  layout: PersistedDiagramLayout
+}
+
 // ─── Connector geometry (used by utils) ─────────────────────────────────────
 
 export interface Point {

@@ -73,6 +73,8 @@ A persistência é um middleware do Vite em `vite.config.ts`. Ela expõe `GET/PU
 
 `saveModel` (em `utils/persist.ts`) anexa os campos derivados `_dbml` e `_mermaid` como side-channel; `loadModel` os remove ao ler. O auto-save é debounced (1.5s) via `watch(..., { deep: true })` na store.
 
+**Artefato vs. UI:** o `.json` guarda propriedades do **diagrama** (`PersistedDiagramState`), não da aplicação. `saveModel` remove as preferências de UI do `layout` (`codeFormat`, `codePanelOpen`, `theme` — ver `UiPreferenceKey` em `types.ts`); `loadState` na store as restaura com defaults (`dbml`, aberto, `system`). Preferências de UI vivem só em memória e nunca entram no artefato.
+
 ### Serialização
 `utils/codePlaceholder.ts` faz o mapeamento bidirecional parcial:
 - `generateDbml(schema)` → `Table ... { ... }` + `Ref: ...` (mapeia cardinalidade para operadores `<>`, `>`, `<`, `-`).

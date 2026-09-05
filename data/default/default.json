@@ -383,8 +383,8 @@
   },
   "entityPositions": {
     "editora": {
-      "x": -279.4761904761905,
-      "y": 121.09523809523807,
+      "x": -193.26929392446635,
+      "y": 115.88834154351392,
       "width": 220,
       "height": 128
     },
@@ -439,15 +439,12 @@
   },
   "layout": {
     "connectorStyle": "orthogonal",
-    "notationStyle": "crowsfoot",
+    "notationStyle": "uml",
     "canvasOffset": {
-      "x": 726,
-      "y": 361
+      "x": 722,
+      "y": 362
     },
-    "canvasScale": 1.1600000000000001,
-    "codeFormat": "dbml",
-    "codePanelOpen": true,
-    "theme": "system"
+    "canvasScale": 0.9999999999999983
   },
   "connectorPoints": {
     "rel_emprestimo_multa": {
