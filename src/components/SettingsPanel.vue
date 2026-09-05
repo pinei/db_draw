@@ -87,7 +87,7 @@ const themeOptions: { value: ThemeMode; label: string }[] = [
     <div class="panel-section">
       <span class="section-label user-email" :title="auth.email ?? ''">{{ auth.email }}</span>
       <div class="btn-group">
-        <button class="btn" @click="auth.logout()">Sair</button>
+        <button class="btn" @click="auth.logout()">Logout</button>
       </div>
     </div>
 

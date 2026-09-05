@@ -128,12 +128,10 @@ function edgeNormal(side: EdgeSide): Point {
 
 /**
  * Placement for a Min-Max cardinality annotation at a connection point.
- * Depends only on the endpoint + entity geometry (never on line direction),
- * so the text stays on a fixed side: the anchor sits on the line,
- * MINMAX_ENTITY_GAP away from the entity, and the text edge nearest the line
- * is exactly MINMAX_LINE_GAP away — via text-anchor/dominant-baseline, so the
- * gap holds regardless of text width. The text goes on the outer side: the
- * side pointing toward the nearest corner of the entity (ties go +).
+ * Depends only on the endpoint + entity geometry (never on line direction).
+ * Both gaps are measured from the text edge (via text-anchor / dominant-baseline),
+ * so "1" and "0..*" keep the same distance from the entity and from the line.
+ * Outer side = toward the nearest corner of the entity (ties go +).
  */
 export function minMaxLabelPosition(conn: ConnectionPoint, entity: EntityRect): MinMaxLabelPlacement {
   const n = edgeNormal(conn.side)
@@ -142,17 +140,36 @@ export function minMaxLabelPosition(conn: ConnectionPoint, entity: EntityRect): 
   const lx = p.x + n.x * MINMAX_ENTITY_GAP
   const ly = p.y + n.y * MINMAX_ENTITY_GAP
   if (conn.side === 'top' || conn.side === 'bottom') {
-    // Text beside the (initially vertical) line: anchor the edge nearest the line
+    // Vertical connector: text beside the line (start/end = line gap)
     return p.x < entity.x + entity.width / 2
       ? { x: lx - g, y: ly, anchor: 'end',   baseline: 'central' }
       : { x: lx + g, y: ly, anchor: 'start', baseline: 'central' }
   }
-  // Text above/below the (initially horizontal) line: digit glyphs have no
-  // descenders, so the alphabetic baseline is the text bottom edge; hanging
-  // is the text top edge
+  // Horizontal connector: text above/below the line. Anchor the entity-facing
+  // edge (start on the right, end on the left) so width doesn't eat the gap.
+  // Digit glyphs have no descenders: alphabetic = bottom edge, hanging = top.
+  const anchor = conn.side === 'right' ? 'start' as const : 'end' as const
   return p.y < entity.y + entity.height / 2
-    ? { x: lx, y: ly - g, anchor: 'middle', baseline: 'alphabetic' }
-    : { x: lx, y: ly + g, anchor: 'middle', baseline: 'hanging' }
+    ? { x: lx, y: ly - g, anchor, baseline: 'alphabetic' }
+    : { x: lx, y: ly + g, anchor, baseline: 'hanging' }
+}
+
+// Self-loop anchor fractions (fromEntityId === toEntityId)
+const SELF_LOOP_FROM_FRACTION = 0.75 // exit: top edge
+const SELF_LOOP_TO_FRACTION = 0.25   // enter: right edge
+
+/**
+ * Fixed endpoints for a self-loop: exits the top edge, re-enters the right
+ * edge. Custom points don't apply — the loop geometry is fully determined
+ * by the entity rect, so it never degenerates (unlike best-pair routing,
+ * which would pick the same point twice on one rect).
+ */
+export function selfLoopPoints(rect: EntityRect): { source: ConnectionPoint; target: ConnectionPoint } {
+  const c = MARKER_CLEARANCE
+  return {
+    source: { point: { x: rect.x + rect.width * SELF_LOOP_FROM_FRACTION, y: rect.y - c }, side: 'top' },
+    target: { point: { x: rect.x + rect.width + c, y: rect.y + rect.height * SELF_LOOP_TO_FRACTION }, side: 'right' },
+  }
 }
 
 /** Projects an absolute point onto a connector line, returning {fraction, perp} relative coords. */

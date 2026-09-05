@@ -192,8 +192,20 @@ export const useDiagramStore = defineStore('diagram', () => {
     // from the in-memory defaults so a fresh load starts with sane UI state
     // (unknown notationStyle from older artifacts falls back to crowsfoot)
     const validNotations: NotationStyle[] = ['crowsfoot', 'minmax', 'barker']
+    // Self-loops use fully derived geometry — drop any stored overrides
+    // (stale values would stick labels/handles inside the card, unreachable)
+    const labelPositions = { ...loaded.labelPositions }
+    const connectorPoints = { ...loaded.connectorPoints }
+    for (const rel of loaded.schema.relationships) {
+      if (rel.fromEntityId === rel.toEntityId) {
+        delete labelPositions[rel.id]
+        delete connectorPoints[rel.id]
+      }
+    }
     state.value = {
       ...loaded,
+      labelPositions,
+      connectorPoints,
       layout: {
         codeFormat: 'dbml',
         codePanelOpen: true,

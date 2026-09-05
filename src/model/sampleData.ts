@@ -83,6 +83,13 @@ export const bibliotecaSchema: ErSchema = {
         { id: 'usuario_nome',          name: 'name',              type: 'VARCHAR(150)', isPK: false, isFK: false },
         { id: 'usuario_email',         name: 'email',             type: 'VARCHAR(200)', isPK: false, isFK: false },
         { id: 'usuario_data_cadastro', name: 'registration_date', type: 'DATE',         isPK: false, isFK: false },
+        {
+          id: 'usuario_referrer_id',
+          name: 'referrer_id',
+          type: 'INTEGER',
+          isPK: false, isFK: true,
+          referencedEntityId: 'usuario',
+        },
       ],
     },
     {
@@ -215,6 +222,15 @@ export const bibliotecaSchema: ErSchema = {
       fromCardinality: 'ONE',
       toCardinality: 'ONE_OR_MANY',
       label: 'makes',
+    },
+    // Self-reference: a user may be referred by another user (0..1 referrer / many referred)
+    {
+      id: 'rel_usuario_referrer',
+      fromEntityId: 'usuario',
+      toEntityId: 'usuario',
+      fromCardinality: 'ZERO_OR_ONE',
+      toCardinality: 'ZERO_OR_MANY',
+      label: 'referred_by',
     },
   ],
 }

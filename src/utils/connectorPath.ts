@@ -83,9 +83,62 @@ function orthogonalCorners(src: ConnectionPoint, tgt: ConnectionPoint): Point[] 
   }
 }
 
+/** Path from an explicit corner list (same format as orthogonalPath). */
+export function polylinePath(corners: Point[]): string {
+  return 'M ' + corners.map((p) => `${p.x} ${p.y}`).join(' L ')
+}
+
 export function orthogonalPath(src: ConnectionPoint, tgt: ConnectionPoint): string {
-  const points = orthogonalCorners(src, tgt)
-  return 'M ' + points.map((p) => `${p.x} ${p.y}`).join(' L ')
+  return polylinePath(orthogonalCorners(src, tgt))
+}
+
+/**
+ * Explicit outside corners for a self-loop in orthogonal mode. The route goes
+ * up from the top-edge exit, right past the card, down, and back left into
+ * the right-edge entry — every segment stays outside the entity rect.
+ */
+export function selfLoopCorners(source: ConnectionPoint, target: ConnectionPoint, loop = 56): Point[] {
+  const top = source.point.y - loop
+  const right = target.point.x + loop
+  return [
+    source.point,
+    { x: source.point.x, y: top },
+    { x: right, y: top },
+    { x: right, y: target.point.y },
+    target.point,
+  ]
+}
+
+// Corner radius for self-loop rendering (well below the 56px loop clearance,
+// so the smoothed curve provably stays outside the entity rect)
+export const SELF_LOOP_CORNER_RADIUS = 24
+
+/**
+ * Renders a corner list as a smooth path with rounded corners (quadratic
+ * fillets). Start/end points are exact; interior corners are cut with radius
+ * clamped to half the adjacent segment lengths.
+ */
+export function roundedPolylinePath(corners: Point[], radius: number): string {
+  if (corners.length < 3) return polylinePath(corners)
+  let d = `M ${fmt(corners[0])}`
+  for (let i = 1; i < corners.length - 1; i++) {
+    const prev = corners[i - 1]
+    const curr = corners[i]
+    const next = corners[i + 1]
+    const inLen = dist(prev, curr)
+    const outLen = dist(curr, next)
+    if (inLen === 0 || outLen === 0) { d += ` L ${fmt(curr)}`; continue }
+    const r = Math.min(radius, inLen / 2, outLen / 2)
+    const ux = (curr.x - prev.x) / inLen
+    const uy = (curr.y - prev.y) / inLen
+    const vx = (next.x - curr.x) / outLen
+    const vy = (next.y - curr.y) / outLen
+    const a = { x: curr.x - ux * r, y: curr.y - uy * r }
+    const b = { x: curr.x + vx * r, y: curr.y + vy * r }
+    d += ` L ${fmt(a)} Q ${fmt(curr)} ${fmt(b)}`
+  }
+  d += ` L ${fmt(corners[corners.length - 1])}`
+  return d
 }
 
 // ─── Path splitting (Barker notation: per-half line styles) ─────────────────
@@ -124,9 +177,8 @@ export function splitBezierPath(src: ConnectionPoint, tgt: ConnectionPoint): Pat
   }
 }
 
-/** Splits the orthogonal polyline into two halves at its length midpoint. */
-export function splitOrthogonalPath(src: ConnectionPoint, tgt: ConnectionPoint): PathHalves {
-  const pts = orthogonalCorners(src, tgt)
+/** Splits an explicit corner list into two halves at its length midpoint. */
+export function splitPolyline(pts: Point[]): PathHalves {
   const total = polylineLength(pts)
   if (total === 0) {
     // Degenerate connector — render a dot for both halves
@@ -155,4 +207,9 @@ export function splitOrthogonalPath(src: ConnectionPoint, tgt: ConnectionPoint):
   }
   // Unreachable fallback — whole polyline as the first half
   return { first: 'M ' + pts.map(fmt).join(' L '), second: `M ${fmt(pts[pts.length - 1])}` }
+}
+
+/** Splits the orthogonal polyline into two halves at its length midpoint. */
+export function splitOrthogonalPath(src: ConnectionPoint, tgt: ConnectionPoint): PathHalves {
+  return splitPolyline(orthogonalCorners(src, tgt))
 }

@@ -34,19 +34,22 @@ const barkerFoot: (Cardinality | LogicalCardinality)[] = ['MANY', 'ONE_OR_MANY',
         <line x1="3" y1="6" x2="11" y2="6"  stroke="var(--c-connector)" stroke-width="1.5" />
         <line x1="3" y1="6" x2="11" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
       </marker>
-      <marker id="cf-MANY-start" markerWidth="13" markerHeight="12" refX="2"  refY="6" orient="auto-start-reverse">
-        <line x1="10" y1="6" x2="2" y2="1"  stroke="var(--c-connector)" stroke-width="1.5" />
-        <line x1="10" y1="6" x2="2" y2="6"  stroke="var(--c-connector)" stroke-width="1.5" />
-        <line x1="10" y1="6" x2="2" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
+      <!-- auto-start-reverse already points +x toward the entity, so start
+           glyphs reuse the end geometry (bar/foot at the entity, extras along
+           the line). Mirroring them would double-flip and draw into the card. -->
+      <marker id="cf-MANY-start" markerWidth="13" markerHeight="12" refX="11" refY="6" orient="auto-start-reverse">
+        <line x1="3" y1="6" x2="11" y2="1"  stroke="var(--c-connector)" stroke-width="1.5" />
+        <line x1="3" y1="6" x2="11" y2="6"  stroke="var(--c-connector)" stroke-width="1.5" />
+        <line x1="3" y1="6" x2="11" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
       </marker>
       <!-- ZERO_OR_ONE: circle (zero) + bar (one); bar closest to entity -->
       <marker id="cf-ZERO_OR_ONE-end"   markerWidth="20" markerHeight="12" refX="17" refY="6" orient="auto">
         <line x1="17" y1="1" x2="17" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
         <circle cx="8" cy="6" r="4" fill="var(--c-canvas-bg)" stroke="var(--c-connector)" stroke-width="1.5" />
       </marker>
-      <marker id="cf-ZERO_OR_ONE-start" markerWidth="20" markerHeight="12" refX="3"  refY="6" orient="auto-start-reverse">
-        <line x1="3" y1="1" x2="3" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
-        <circle cx="12" cy="6" r="4" fill="var(--c-canvas-bg)" stroke="var(--c-connector)" stroke-width="1.5" />
+      <marker id="cf-ZERO_OR_ONE-start" markerWidth="20" markerHeight="12" refX="17" refY="6" orient="auto-start-reverse">
+        <line x1="17" y1="1" x2="17" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
+        <circle cx="8" cy="6" r="4" fill="var(--c-canvas-bg)" stroke="var(--c-connector)" stroke-width="1.5" />
       </marker>
       <!-- ONE_OR_MANY: single bar + crow's foot; foot closest to entity -->
       <marker id="cf-ONE_OR_MANY-end"   markerWidth="24" markerHeight="12" refX="21" refY="6" orient="auto">
@@ -55,11 +58,11 @@ const barkerFoot: (Cardinality | LogicalCardinality)[] = ['MANY', 'ONE_OR_MANY',
         <line x1="12" y1="6" x2="21" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
         <line x1="12" y1="1" x2="12" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
       </marker>
-      <marker id="cf-ONE_OR_MANY-start" markerWidth="24" markerHeight="12" refX="3"  refY="6" orient="auto-start-reverse">
-        <line x1="11" y1="6" x2="3" y2="1"  stroke="var(--c-connector)" stroke-width="1.5" />
-        <line x1="11" y1="6" x2="3" y2="6"  stroke="var(--c-connector)" stroke-width="1.5" />
-        <line x1="11" y1="6" x2="3" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
-        <line x1="11" y1="1" x2="11" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
+      <marker id="cf-ONE_OR_MANY-start" markerWidth="24" markerHeight="12" refX="21" refY="6" orient="auto-start-reverse">
+        <line x1="12" y1="6" x2="21" y2="1"  stroke="var(--c-connector)" stroke-width="1.5" />
+        <line x1="12" y1="6" x2="21" y2="6"  stroke="var(--c-connector)" stroke-width="1.5" />
+        <line x1="12" y1="6" x2="21" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
+        <line x1="12" y1="1" x2="12" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
       </marker>
       <marker id="cf-ZERO_OR_MANY-end"   markerWidth="24" markerHeight="12" refX="21" refY="6" orient="auto">
         <line x1="12" y1="6" x2="21" y2="1"  stroke="var(--c-connector)" stroke-width="1.5" />
@@ -67,11 +70,11 @@ const barkerFoot: (Cardinality | LogicalCardinality)[] = ['MANY', 'ONE_OR_MANY',
         <line x1="12" y1="6" x2="21" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
         <circle cx="8" cy="6" r="4" fill="var(--c-canvas-bg)" stroke="var(--c-connector)" stroke-width="1.5" />
       </marker>
-      <marker id="cf-ZERO_OR_MANY-start" markerWidth="24" markerHeight="12" refX="3"  refY="6" orient="auto-start-reverse">
-        <line x1="11" y1="6" x2="3" y2="1"  stroke="var(--c-connector)" stroke-width="1.5" />
-        <line x1="11" y1="6" x2="3" y2="6"  stroke="var(--c-connector)" stroke-width="1.5" />
-        <line x1="11" y1="6" x2="3" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
-        <circle cx="15" cy="6" r="4" fill="var(--c-canvas-bg)" stroke="var(--c-connector)" stroke-width="1.5" />
+      <marker id="cf-ZERO_OR_MANY-start" markerWidth="24" markerHeight="12" refX="21" refY="6" orient="auto-start-reverse">
+        <line x1="12" y1="6" x2="21" y2="1"  stroke="var(--c-connector)" stroke-width="1.5" />
+        <line x1="12" y1="6" x2="21" y2="6"  stroke="var(--c-connector)" stroke-width="1.5" />
+        <line x1="12" y1="6" x2="21" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
+        <circle cx="8" cy="6" r="4" fill="var(--c-canvas-bg)" stroke="var(--c-connector)" stroke-width="1.5" />
       </marker>
     </template>
 
@@ -99,10 +102,10 @@ const barkerFoot: (Cardinality | LogicalCardinality)[] = ['MANY', 'ONE_OR_MANY',
           <line x1="3" y1="6" x2="11" y2="6"  stroke="var(--c-connector)" stroke-width="1.5" />
           <line x1="3" y1="6" x2="11" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
         </marker>
-        <marker :id="`bar-${c}-start`" markerWidth="13" markerHeight="12" refX="2" refY="6" orient="auto-start-reverse">
-          <line x1="10" y1="6" x2="2" y2="1"  stroke="var(--c-connector)" stroke-width="1.5" />
-          <line x1="10" y1="6" x2="2" y2="6"  stroke="var(--c-connector)" stroke-width="1.5" />
-          <line x1="10" y1="6" x2="2" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
+        <marker :id="`bar-${c}-start`" markerWidth="13" markerHeight="12" refX="11" refY="6" orient="auto-start-reverse">
+          <line x1="3" y1="6" x2="11" y2="1"  stroke="var(--c-connector)" stroke-width="1.5" />
+          <line x1="3" y1="6" x2="11" y2="6"  stroke="var(--c-connector)" stroke-width="1.5" />
+          <line x1="3" y1="6" x2="11" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
         </marker>
       </template>
     </template>
