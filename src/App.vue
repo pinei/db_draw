@@ -38,16 +38,24 @@ systemMedia.addEventListener('change', applyTheme)
 let initialized = false
 
 async function initModel() {
+  // Server hint wins on fresh login; the remembered browser id covers reloads
+  if (auth.lastModelId) store.setCurrentModelId(auth.lastModelId)
+  else store.restoreCurrentModelId()
+  const id = store.currentModelId
   try {
-    const loaded = await loadModel('default')
+    const loaded = await loadModel(id)
     if (loaded) {
-      store.loadState(loaded, 'default')
-    } else {
+      store.loadState(loaded, id)
+    } else if (id === 'default') {
       // First run — seed the user folder with PRISTINE defaults, never with
       // whatever happens to sit in memory (another user's diagram after a
       // logout→login switch without reload)
       store.resetState()
-      await saveModel('default', store.state)
+      await saveModel(id, store.state)
+    } else {
+      // Remembered model gone (deleted elsewhere) — start it blank
+      store.seedFreshModel(id, { blank: true })
+      await saveModel(id, store.state)
     }
   } catch (e) {
     if (e instanceof AuthError) auth.logout()

@@ -2,10 +2,13 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import type { DiagramState, PersistedDiagramState, ConnectorStyle, NotationStyle, CodeFormat, ThemeMode, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel } from '../model/types'
 import { bibliotecaSchema } from '../model/sampleData'
-import { saveModel, AuthError } from '../utils/persist'
+import { saveModel, AuthError, listModels, loadModel } from '../utils/persist'
 import { compileDbml, buildDbmlPatch } from '../utils/dbmlImport'
 import { defaultMeta, sanitizeTags, seedMeta } from '../utils/modelMeta'
 import { useAuthStore } from './auth'
+
+const MODEL_KEY = 'dbdraw.model.id'
+const MODEL_ID_RE = /^[a-z0-9_-]+$/i
 
 // Entity card dimensions used for initial layout
 const ENTITY_WIDTH = 220
@@ -128,6 +131,23 @@ export const useDiagramStore = defineStore('diagram', () => {
 
   // Auto-save status exposed to the UI
   const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
+  // Currently open model (folder name). Session state — not part of the
+  // diagram artifact; remembered per browser so reloads reopen the same model.
+  const currentModelId = ref('default')
+
+  function setCurrentModelId(id: string) {
+    if (!MODEL_ID_RE.test(id)) return
+    currentModelId.value = id
+    try { localStorage.setItem(MODEL_KEY, id) } catch { /* non-browser */ }
+  }
+
+  function restoreCurrentModelId() {
+    try {
+      const saved = localStorage.getItem(MODEL_KEY)
+      if (saved) setCurrentModelId(saved)
+    } catch { /* non-browser */ }
+  }
 
   // ─── Getters ───────────────────────────────────────────────────────────────
 
@@ -297,6 +317,22 @@ export const useDiagramStore = defineStore('diagram', () => {
     draggingConnectorPoint.value = null
     draggingLabel.value = null
     saveStatus.value = 'idle'
+    currentModelId.value = 'default'
+    try { localStorage.removeItem(MODEL_KEY) } catch { /* non-browser */ }
+  }
+
+  // Fresh model seed: pristine defaults with this model's identity. Blank
+  // models start with an empty canvas (no sample entities).
+  function seedFreshModel(id: string, opts: { name?: string; description?: string; tags?: string[]; blank?: boolean } = {}) {
+    resetState()
+    if (opts.blank) state.value.schema = { entities: [], relationships: [] }
+    state.value.meta = {
+      id,
+      name: opts.name?.trim() || id,
+      description: opts.description?.trim() ?? '',
+      tags: sanitizeTags(opts.tags),
+    }
+    setCurrentModelId(id)
   }
 
   function loadState(loaded: PersistedDiagramState, modelId = 'default') {
@@ -331,6 +367,34 @@ export const useDiagramStore = defineStore('diagram', () => {
     }
   }
 
+  async function persistCurrent(): Promise<void> {
+    await saveModel(currentModelId.value, state.value)
+  }
+
+  async function runSave(): Promise<void> {
+    saveStatus.value = 'saving'
+    try {
+      await persistCurrent()
+      saveStatus.value = 'saved'
+      setTimeout(() => { saveStatus.value = 'idle' }, 2000)
+    } catch (e) {
+      // Token revoked/expired elsewhere — back to the login screen
+      if (e instanceof AuthError) { useAuthStore().logout(); return }
+      saveStatus.value = 'error'
+    }
+  }
+
+  // Immediate save (clears any pending debounce). Switching/creating models
+  // awaits this first so no edit is lost in the 1.5s debounce window.
+  async function flushSave(): Promise<void> {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    if (!useAuthStore().isAuthenticated) return
+    await runSave()
+  }
+
   // Debounced auto-save — fires 1.5s after the last state mutation
   // (never while logged out: no credentials → the PUT would 401 anyway)
   let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -340,20 +404,60 @@ export const useDiagramStore = defineStore('diagram', () => {
       if (!useAuthStore().isAuthenticated) return
       if (saveTimer) clearTimeout(saveTimer)
       saveStatus.value = 'saving'
-      saveTimer = setTimeout(async () => {
-        try {
-          await saveModel('default', state.value)
-          saveStatus.value = 'saved'
-          setTimeout(() => { saveStatus.value = 'idle' }, 2000)
-        } catch (e) {
-          // Token revoked/expired elsewhere — back to the login screen
-          if (e instanceof AuthError) { useAuthStore().logout(); return }
-          saveStatus.value = 'error'
-        }
-      }, 1500)
+      saveTimer = setTimeout(() => { void runSave() }, 1500)
     },
     { deep: true },
   )
+
+  // Open another model (flushes the current one first). Missing remote model
+  // (deleted elsewhere) seeds a fresh blank one instead of failing.
+  async function openModel(id: string): Promise<{ success: boolean; message?: string }> {
+    if (!MODEL_ID_RE.test(id)) return { success: false, message: 'Invalid model id' }
+    if (id === currentModelId.value) return { success: true }
+    await flushSave()
+    try {
+      const loaded = await loadModel(id)
+      if (loaded) {
+        loadState(loaded, id)
+        setCurrentModelId(id)
+      } else {
+        seedFreshModel(id, { blank: true })
+        await persistCurrent()
+      }
+      return { success: true }
+    } catch (e) {
+      if (e instanceof AuthError) { useAuthStore().logout(); return { success: false, message: 'Sessão inválida — entre novamente' } }
+      return { success: false, message: e instanceof Error ? e.message : 'Falha ao abrir modelo' }
+    }
+  }
+
+  async function createModel(
+    id: string,
+    meta: { name?: string; description?: string; tags?: string[] },
+  ): Promise<{ success: boolean; message?: string }> {
+    const clean = id.trim().toLowerCase()
+    if (!MODEL_ID_RE.test(clean)) {
+      return { success: false, message: 'ID inválido — use letras, números, _ ou -' }
+    }
+    try {
+      const existing = await listModels()
+      if (existing.some((m) => m.id === clean)) {
+        return { success: false, message: `Modelo "${clean}" já existe` }
+      }
+    } catch (e) {
+      if (e instanceof AuthError) { useAuthStore().logout(); return { success: false, message: 'Sessão inválida — entre novamente' } }
+      return { success: false, message: e instanceof Error ? e.message : 'Falha ao listar modelos' }
+    }
+    await flushSave()
+    seedFreshModel(clean, { blank: true, ...meta })
+    try {
+      await persistCurrent()
+    } catch (e) {
+      if (e instanceof AuthError) { useAuthStore().logout(); return { success: false, message: 'Sessão inválida — entre novamente' } }
+      return { success: false, message: e instanceof Error ? e.message : 'Falha ao criar modelo' }
+    }
+    return { success: true }
+  }
 
   return {
     state,
@@ -389,5 +493,12 @@ export const useDiagramStore = defineStore('diagram', () => {
     applyDbml,
     updateModelMeta,
     resetState,
+    currentModelId,
+    setCurrentModelId,
+    restoreCurrentModelId,
+    seedFreshModel,
+    openModel,
+    createModel,
+    flushSave,
   }
 })

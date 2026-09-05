@@ -2,10 +2,12 @@
 import { computed, nextTick, ref } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
 import { normalizeTag } from '../utils/modelMeta'
+import ModelManager from './ModelManager.vue'
 
 const store = useDiagramStore()
 const meta = computed(() => store.state.meta)
 const displayName = computed(() => meta.value.name || meta.value.id)
+const showManager = ref(false)
 
 // ─── Edit popover (all 4 metadata fields; id is read-only) ───────────────────
 const open = ref(false)
@@ -117,7 +119,17 @@ function onKeydown(e: KeyboardEvent) {
       </div>
     </div>
 
-    <div v-if="open" class="backdrop" @click="closePopover" />
+    <button
+      type="button"
+      class="manage-btn"
+      title="Manage models"
+      aria-label="Manage models"
+      @click="showManager = true"
+    >🗂</button>
+
+    <ModelManager v-if="showManager" @close="showManager = false" />
+
+    <div v-if="open || showManager" class="backdrop" @click="open = false; showManager = false" />
   </div>
 </template>
 
@@ -132,6 +144,8 @@ function onKeydown(e: KeyboardEvent) {
   z-index: 100;
   display: flex;
   justify-content: center;
+  align-items: flex-start;
+  gap: 6px;
   pointer-events: none;
   user-select: none;
 }
@@ -140,6 +154,28 @@ function onKeydown(e: KeyboardEvent) {
   position: relative;
   pointer-events: auto;
   max-width: 100%;
+}
+
+.manage-btn {
+  pointer-events: auto;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  background: var(--c-panel-bg);
+  border: 1px solid var(--c-panel-border);
+  border-radius: 50%;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  padding: 0;
+}
+
+.manage-btn:hover {
+  border-color: var(--c-btn-active-border);
 }
 
 .model-pill {

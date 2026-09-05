@@ -48,6 +48,12 @@ export interface ModelMeta {
 
 export const TAG_PATTERN = /^[a-z0-9_]+$/
 
+// Model listing entry (server returns meta best-effort; null when missing)
+export interface ModelSummary {
+  id: string
+  meta: ModelMeta | null
+}
+
 // ─── Diagram Layout (presentation config) ───────────────────────────────────
 
 export type ConnectorStyle = 'curved' | 'orthogonal'

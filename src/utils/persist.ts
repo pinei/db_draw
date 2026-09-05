@@ -1,6 +1,7 @@
-import type { DiagramState, PersistedDiagramState } from '../model/types'
+import type { DiagramState, PersistedDiagramState, ModelMeta, ModelSummary } from '../model/types'
 import { generateDbml, generateMermaid } from './codePlaceholder'
 import { compileDbml } from './dbmlImport'
+import { sanitizeTags } from './modelMeta'
 import { useAuthStore } from '../stores/auth'
 
 const BASE = '/api/models'
@@ -36,7 +37,12 @@ export async function requestToken(email: string): Promise<string> {
   return typeof data.message === 'string' ? data.message : 'Token gerado'
 }
 
-export async function loginRequest(email: string, token: string): Promise<string> {
+export interface LoginResult {
+  email: string
+  lastModelId: string | null
+}
+
+export async function loginRequest(email: string, token: string): Promise<LoginResult> {
   let res: Response
   try {
     res = await fetch(`${AUTH_BASE}/login`, {
@@ -49,9 +55,12 @@ export async function loginRequest(email: string, token: string): Promise<string
   }
   if (res.status === 401) throw new Error('E-mail ou token inválido')
   if (!res.ok) throw new Error(`Falha no login: ${res.status}`)
-  const data = await res.json().catch(() => ({}))
+  const data = await res.json().catch(() => ({})) as { email?: unknown; lastModelId?: unknown }
   if (typeof data.email !== 'string') throw new Error('Resposta inesperada do servidor')
-  return data.email
+  return {
+    email: data.email,
+    lastModelId: typeof data.lastModelId === 'string' ? data.lastModelId : null,
+  }
 }
 
 // Validation summary for the Apply button — single compile path shared with
@@ -66,6 +75,37 @@ export function validateDbml(text: string): { success: boolean; message: string 
   } catch (err: unknown) {
     return { success: false, message: `✗ Erro: ${err instanceof Error ? err.message : String(err)}` }
   }
+}
+
+export async function listModels(): Promise<ModelSummary[]> {
+  let res: Response
+  try {
+    res = await fetch(BASE, { headers: authHeaders() })
+  } catch {
+    throw new Error('Servidor indisponível — rode npm run dev')
+  }
+  if (res.status === 401) throw new AuthError()
+  if (!res.ok) throw new Error(`Failed to list models: ${res.status}`)
+  const data = await res.json().catch(() => ({})) as { models?: unknown }
+  if (!Array.isArray(data.models)) return []
+  const out: ModelSummary[] = []
+  for (const m of data.models) {
+    if (typeof m !== 'object' || m === null) continue
+    const { id, meta } = m as { id?: unknown; meta?: unknown }
+    if (typeof id !== 'string' || !/^[a-z0-9_-]+$/i.test(id)) continue
+    let clean: ModelMeta | null = null
+    if (typeof meta === 'object' && meta !== null) {
+      const mm = meta as Record<string, unknown>
+      clean = {
+        id,
+        name: typeof mm.name === 'string' && mm.name ? mm.name : id,
+        description: typeof mm.description === 'string' ? mm.description : '',
+        tags: sanitizeTags(mm.tags),
+      }
+    }
+    out.push({ id, meta: clean })
+  }
+  return out
 }
 
 export async function loadModel(name: string): Promise<PersistedDiagramState | null> {

@@ -1,6 +1,6 @@
 import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs'
 import { join, dirname, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
@@ -19,6 +19,20 @@ interface UserRecord {
   lastLoginIp?: string
   lastLoginUserAgent?: string
   loginCount?: number
+  lastModelId?: string
+}
+
+/** Best-effort: remember the last accessed model on the user record. */
+function touchLastModel(userDir: string, modelId: string): void {
+  try {
+    const file = join(userDir, 'user.json')
+    const record = JSON.parse(readFileSync(file, 'utf-8')) as UserRecord
+    if (record.lastModelId === modelId) return
+    record.lastModelId = modelId
+    writeFileSync(file, JSON.stringify(record, null, 2), 'utf-8')
+  } catch {
+    // best effort — model access already succeeded
+  }
 }
 
 /** Normalize + validate an email; returns path-safe segments or null. */
@@ -132,6 +146,7 @@ function authPlugin(): Plugin {
         }
         const dir = authenticate(parsed.email, body.token)
         if (!dir) { sendJson(res, 401, { error: 'invalid credentials' }); return }
+        let lastModelId = 'default'
         try {
           const file = join(dir, 'user.json')
           const record = JSON.parse(readFileSync(file, 'utf-8')) as UserRecord
@@ -139,11 +154,14 @@ function authPlugin(): Plugin {
           record.lastLoginIp = req.socket.remoteAddress ?? undefined
           record.lastLoginUserAgent = req.headers['user-agent'] ?? undefined
           record.loginCount = (record.loginCount ?? 0) + 1
+          if (typeof record.lastModelId === 'string' && record.lastModelId) {
+            lastModelId = record.lastModelId
+          }
           writeFileSync(file, JSON.stringify(record, null, 2), 'utf-8')
         } catch {
           // best effort — login already succeeded
         }
-        sendJson(res, 200, { email: parsed.email })
+        sendJson(res, 200, { email: parsed.email, lastModelId })
       })
     },
   }
@@ -161,13 +179,44 @@ function persistencePlugin(): Plugin {
         if (!home) { res.statusCode = 401; res.end(); return }
 
         const name = req.url?.replace(/^\//, '').split('?')[0]
-        if (!name || !/^[a-z0-9_-]+$/i.test(name)) { next(); return }
+        // GET /api/models (no name) → list the user's models (id + meta)
+        if (!name) {
+          if (req.method !== 'GET') { next(); return }
+          const modelsDir = join(home, 'models')
+          const models: Array<{ id: string; meta: unknown }> = []
+          if (existsSync(modelsDir)) {
+            for (const entry of readdirSync(modelsDir, { withFileTypes: true })) {
+              if (!entry.isDirectory() || !/^[a-z0-9_-]+$/i.test(entry.name)) continue
+              let meta: unknown = null
+              try {
+                const data = JSON.parse(readFileSync(join(modelsDir, entry.name, `${entry.name}.json`), 'utf-8'))
+                if (data && typeof data.meta === 'object' && data.meta !== null) {
+                  const m = data.meta as Record<string, unknown>
+                  meta = {
+                    id: entry.name,
+                    name: typeof m.name === 'string' ? m.name : entry.name,
+                    description: typeof m.description === 'string' ? m.description : '',
+                    tags: Array.isArray(m.tags) ? m.tags.filter((t): t is string => typeof t === 'string') : [],
+                  }
+                }
+              } catch {
+                // missing/corrupt artifact → listed with null meta
+              }
+              models.push({ id: entry.name, meta })
+            }
+          }
+          models.sort((a, b) => a.id.localeCompare(b.id))
+          sendJson(res, 200, { models })
+          return
+        }
+        if (!/^[a-z0-9_-]+$/i.test(name)) { next(); return }
 
         const dir      = join(home, 'models', name)
         const jsonPath = join(dir, `${name}.json`)
 
         if (req.method === 'GET') {
           if (!existsSync(jsonPath)) { res.statusCode = 404; res.end(); return }
+          touchLastModel(home, name)
           res.setHeader('Content-Type', 'application/json')
           res.end(readFileSync(jsonPath, 'utf-8'))
 
@@ -188,6 +237,7 @@ function persistencePlugin(): Plugin {
               writeFileSync(jsonPath, JSON.stringify(state, null, 2), 'utf-8')
               writeFileSync(join(dir, `${name}.dbml`),    _dbml    ?? '', 'utf-8')
               writeFileSync(join(dir, `${name}.mermaid`), _mermaid ?? '', 'utf-8')
+              touchLastModel(home, name)
               res.statusCode = 204
               res.end()
             } catch {

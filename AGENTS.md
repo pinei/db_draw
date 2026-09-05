@@ -44,7 +44,8 @@ src/
     ConnectorMarker.vue       # <defs> com todos os markers SVG por notação/cardinalidade
     SettingsPanel.vue         # controles de estilo/notação/zoom + usuário/logout + status de save
     CodePanel.vue             # painel de código DBML/Mermaid (edição + apply + highlight read-only)
-    ModelBar.vue              # barra superior: meta do model (nome/tags/descrição editáveis, id só leitura)
+    ModelBar.vue              # pílula /id + nome + botão 🗂 (popover ModelManager)
+    ModelManager.vue          # popover: lista modelos (id+meta), abre (flush antes) e cria (blank)
     LoginPanel.vue            # tela de login (e-mail + token, gerar token)
   vite.config.ts              # plugins de auth (/api/auth) e persistência (/api/models) em middleware do dev server
 data/
@@ -73,7 +74,7 @@ Regras importantes:
 ## Como as coisas funcionam
 
 ### Autenticação multiusuário (dev apenas)
-Login com e-mail + token via `LoginPanel.vue` (gate no `App.vue`; sessão em `localStorage`, store `auth.ts`). Logout chama `resetState()` da diagram store (estado é global e sem dono — sem isso o próximo login herdaria o diagrama em memória e o seed de 404 o persistiria na pasta do novo usuário). Seed de primeiro login usa `resetState()` + `saveModel` (defaults pristinos, nunca o estado corrente). Auto-save não dispara deslogado. Endpoints em `vite.config.ts`: `POST /api/auth/token {email}` (gera token, grava `user.json`, imprime o token no stdout — sem e-mail nesta fase) e `POST /api/auth/login {email, token}` (compara com `timingSafeEqual`). E-mail vira pasta `data/user/<dominio>/<nome>` (lowercase, validado contra path traversal). `GET/PUT /api/models/:name` exigem headers `X-User-Email`/`X-Auth-Token` e operam em `data/user/.../models/:name/`; 401 vira `AuthError` e desloga. Tokens em plaintext, sem expiração — débito assumido até a fase do e-mail.
+Login com e-mail + token via `LoginPanel.vue` (gate no `App.vue`; sessão em `localStorage`, store `auth.ts`). Logout chama `resetState()` da diagram store (estado é global e sem dono — sem isso o próximo login herdaria o diagrama em memória e o seed de 404 o persistiria na pasta do novo usuário). Seed de primeiro login usa `resetState()` + `saveModel` (defaults pristinos, nunca o estado corrente). Auto-save não dispara deslogado. Endpoints em `vite.config.ts`: `POST /api/auth/token {email}` (gera token, grava `user.json`, imprime o token no stdout — sem e-mail nesta fase) e `POST /api/auth/login {email, token}` (compara com `timingSafeEqual`). E-mail vira pasta `data/user/<dominio>/<nome>` (lowercase, validado contra path traversal). `GET/PUT /api/models/:name` exigem headers `X-User-Email`/`X-Auth-Token` e operam em `data/user/.../models/:name/`; `GET /api/models` (sem nome) lista `[{id, meta}]` (meta best-effort, null se ausente); 401 vira `AuthError` e desloga. Modelo atual = `currentModelId` na store (fora do artefato, lembrado em `localStorage`); trocar/criar faz `flushSave()` antes para não perder a janela do debounce. Tokens em plaintext, sem expiração — débito assumido até a fase do e-mail. `user.json` guarda também `lastModelId` (atualizado a cada GET/PUT de modelo, best-effort); o login o devolve e o `App` abre esse modelo (hint do servidor vence o `localStorage`, que cobre só reloads).
 
 ### Persistência (dev apenas)
 A persistência é um middleware do Vite em `vite.config.ts`. Ela expõe `GET/PUT /api/models/:name` (autenticado, ver acima) e grava arquivos em `data/user/.../models/:name/` (`.json`, `.dbml`, `.mermaid`). Só funciona com `npm run dev`; fora disso o app roda em memória silenciosamente (`App.vue` usa try/catch). Primeiro login sem modelo → 404 → `App.vue` semeia do `sampleData` em memória.
