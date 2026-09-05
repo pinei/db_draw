@@ -47,9 +47,8 @@ src/
     LoginPanel.vue            # tela de login (e-mail + token, gerar token)
   vite.config.ts              # plugins de auth (/api/auth) e persistência (/api/models) em middleware do dev server
 data/
-  default/                    # legado pré-multiusuário (não mais usado como seed)
-  user/<dominio>/<nome>/
-    user.json                 # { email, token, createdAt, lastLoginAt } — NÃO versionado (ver .gitignore)
+  user/<dominio>/<nome>/      # NÃO versionado (ver .gitignore)
+    user.json                 # { email, token, createdAt, lastLoginAt, lastLoginIp, lastLoginUserAgent, loginCount }
     models/<nome>/            # um .json/.dbml/.mermaid por modelo (hoje só "default")
 docs/                         # imagens/assets de documentação
 ```
