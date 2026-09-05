@@ -232,11 +232,23 @@ export function compileDbml(text: string): { ok: true; value: CompiledDbml } | {
     return true
   })
 
-  // Ignored inventory: no-counterpart features + constrained columns
+  // Ignored inventory: no-counterpart features + constrained columns.
+  // [not null] on an FK-side endpoint field IS consumed (one-side optionality
+  // inference) and doesn't count; anywhere else it has no counterpart.
+  const nnConsumed = new Set<string>()
+  for (const r of deduped) {
+    if (r.fromMany) nnConsumed.add(`${r.fromTable} ${r.fromField}`)
+    if (r.toMany) nnConsumed.add(`${r.toTable} ${r.toField}`)
+    if (!r.fromMany && !r.toMany) {
+      nnConsumed.add(`${r.fromTable} ${r.fromField}`)
+      nnConsumed.add(`${r.toTable} ${r.toField}`)
+    }
+  }
   ignored += (db.enums ?? []).length + (db.tableGroups ?? []).length + (db.notes ?? []).length
   for (const table of tables) {
     for (const field of table.fields ?? []) {
-      if (field.unique || field.not_null || field.dbdefault != null) ignored++
+      const nnConsumedHere = !!field.not_null && nnConsumed.has(`${table.name} ${field.name}`)
+      if (field.unique || field.dbdefault != null || (field.not_null && !nnConsumedHere)) ignored++
     }
   }
 
@@ -254,10 +266,14 @@ function isManySide(c: Cardinality): boolean {
   return c === 'ONE_OR_MANY' || c === 'ZERO_OR_MANY'
 }
 
-// Agreed defaults for genuinely new relationships:
-// > → ONE_OR_MANY→ONE, < → ONE→ONE_OR_MANY, <> → both MANY, - → both ONE
-function defaultCardinalities(fromMany: boolean, toMany: boolean): [Cardinality, Cardinality] {
-  return [fromMany ? 'ONE_OR_MANY' : 'ONE', toMany ? 'ONE_OR_MANY' : 'ONE']
+// Defaults for genuinely new relationships (> → ONE_OR_MANY→ONE etc.).
+// The many-side axis stays ONE_OR_MANY (unknowable in DBML); the one-side
+// axis comes from [not null] on the opposite (FK-side) field when known.
+function defaultCardinalities(ref: NormalizedRef, nnOf: (table: string, field: string) => boolean): [Cardinality, Cardinality] {
+  return [
+    ref.fromMany ? 'ONE_OR_MANY' : nnOf(ref.toTable, ref.toField) ? 'ONE' : 'ZERO_OR_ONE',
+    ref.toMany ? 'ONE_OR_MANY' : nnOf(ref.fromTable, ref.fromField) ? 'ONE' : 'ZERO_OR_ONE',
+  ]
 }
 
 // Keep the side's optionality (ZERO_*) when the many/one side flips
@@ -319,6 +335,15 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
     ...current.relationships.map((r) => r.id),
   ])
   const byName = new Map(current.entities.map((e) => [e.name, e]))
+
+  // [not null] flags by Table.field, for one-side optionality inference
+  const nnSet = new Set<string>()
+  for (const table of compiled.tables) {
+    for (const col of table.fields ?? []) {
+      if (col.not_null && typeof col.name === 'string') nnSet.add(`${table.name} ${col.name}`)
+    }
+  }
+  const nnOf = (table: string, field: string): boolean => nnSet.has(`${table} ${field}`)
 
   const createdEntityIds: string[] = []
   const removedEntityIds: string[] = []
@@ -396,17 +421,26 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
 
     if (match) {
       consumedRelIds.add(match.id)
-      // map parsed many-ness onto the EXISTING direction (may be swapped)
+      // map parsed many-ness onto the EXISTING direction (may be swapped):
+      // many sides keep their ZERO-ness, one sides sync from [not null]
       const swapped = match.fromEntityId !== fromId
-      const wantFrom = withManySide(match.fromCardinality, swapped ? ref.toMany : ref.fromMany)
-      const wantTo = withManySide(match.toCardinality, swapped ? ref.fromMany : ref.toMany)
+      const exFromMany = swapped ? ref.toMany : ref.fromMany
+      const exToMany = swapped ? ref.fromMany : ref.toMany
+      const oppFrom = swapped ? { t: ref.fromTable, f: ref.fromField } : { t: ref.toTable, f: ref.toField }
+      const oppTo = swapped ? { t: ref.toTable, f: ref.toField } : { t: ref.fromTable, f: ref.fromField }
+      const wantFrom = exFromMany
+        ? withManySide(match.fromCardinality, true)
+        : nnOf(oppFrom.t, oppFrom.f) ? 'ONE' : 'ZERO_OR_ONE'
+      const wantTo = exToMany
+        ? withManySide(match.toCardinality, true)
+        : nnOf(oppTo.t, oppTo.f) ? 'ONE' : 'ZERO_OR_ONE'
       const wantLabel = ref.label
       if (wantFrom !== match.fromCardinality || wantTo !== match.toCardinality || wantLabel !== match.label) {
         changedRels++
       }
       nextRels.push({ ...match, fromCardinality: wantFrom, toCardinality: wantTo, label: wantLabel })
     } else {
-      const [from, to] = defaultCardinalities(ref.fromMany, ref.toMany)
+      const [from, to] = defaultCardinalities(ref, nnOf)
       nextRels.push({
         id: uniqueId(`rel_${fromId}_${toId}`, taken),
         fromEntityId: fromId,

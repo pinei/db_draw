@@ -5,8 +5,13 @@ import type { ErSchema, ErEntity, ErField, ErRelationship, Cardinality, LogicalC
 // the binder rejects duplicate same-endpoint refs (code 5001), so emitting
 // both would make our own output fail validation.
 
-function dbmlFieldLine(f: ErField): string {
-  const annotation = f.isPK ? ' [pk]' : ''
+function dbmlFieldLine(f: ErField, notNull: boolean): string {
+  const flags: string[] = []
+  if (f.isPK) flags.push('pk')
+  // [not null] only on FK holders (never on pure PKs) — it feeds the import's
+  // one-side optionality inference, and PKs must not flip the other endpoint
+  if (notNull) flags.push('not null')
+  const annotation = flags.length ? ` [${flags.join(', ')}]` : ''
   return `  ${f.name} ${f.type}${annotation}`
 }
 
@@ -14,17 +19,36 @@ function pkFieldName(entity: ErEntity): string {
   return entity.fields.find((f) => f.isPK)?.name ?? 'id'
 }
 
-function relToDbml(rel: ErRelationship, schema: ErSchema): string | null {
+function isMandatory(c: Cardinality | LogicalCardinality): boolean {
+  return c === 'ONE' || c === 'ONE_OR_MANY'
+}
+
+interface FkSides {
+  fromEntity: ErEntity
+  toEntity: ErEntity
+  fkOnTo?: ErField
+  fkOnFrom?: ErField
+}
+
+function fkSides(rel: ErRelationship, schema: ErSchema, used?: Set<string>): FkSides | null {
   const fromEntity = schema.entities.find((e) => e.id === rel.fromEntityId)
   const toEntity   = schema.entities.find((e) => e.id === rel.toEntityId)
   if (!fromEntity || !toEntity) return null
   // The FK column lives on the many side: prefer a TO field pointing back at
   // FROM, else a FROM field pointing at TO (self-loops hit the first branch,
-  // since both sides are the same entity)
-  const fkOnTo = toEntity.fields.find((f) => f.isFK && f.referencedEntityId === fromEntity.id)
+  // since both sides are the same entity). Relationships carry no field info,
+  // so rels sharing an entity pair claim FK fields first-unused-wins (in
+  // relationship order) — deterministic, and stable across import round-trips.
+  const free = (entityId: string, f: ErField) => !used?.has(`${entityId} ${f.name}`)
+  const fkOnTo = toEntity.fields.find((f) => f.isFK && f.referencedEntityId === fromEntity.id && free(toEntity.id, f))
   const fkOnFrom = !fkOnTo
-    ? fromEntity.fields.find((f) => f.isFK && f.referencedEntityId === toEntity.id)
+    ? fromEntity.fields.find((f) => f.isFK && f.referencedEntityId === toEntity.id && free(fromEntity.id, f))
     : undefined
+  return { fromEntity, toEntity, fkOnTo, fkOnFrom }
+}
+
+function relLine(rel: ErRelationship, sides: FkSides): string {
+  const { fromEntity, toEntity, fkOnTo, fkOnFrom } = sides
   const fromCol = fkOnTo ? pkFieldName(fromEntity) : (fkOnFrom?.name ?? 'id')
   const toCol = fkOnTo ? fkOnTo.name : pkFieldName(toEntity)
   const op = cardinalityToDbmlOp(rel.fromCardinality, rel.toCardinality)
@@ -33,14 +57,29 @@ function relToDbml(rel: ErRelationship, schema: ErSchema): string | null {
 }
 
 export function generateDbml(schema: ErSchema): string {
+  // [not null] on an FK holder iff the OPPOSITE endpoint is mandatory — the
+  // import mirrors this to recover ONE vs ZERO_OR_ONE (the many-side axis
+  // stays unknowable in DBML and keeps its default/preserved value)
+  const usedFk = new Set<string>()
+  const notNull = new Set<string>()
+  const refs: string[] = []
+  for (const rel of schema.relationships) {
+    const sides = fkSides(rel, schema, usedFk)
+    if (!sides) continue
+    if (sides.fkOnTo) usedFk.add(`${sides.toEntity.id} ${sides.fkOnTo.name}`)
+    if (sides.fkOnFrom) usedFk.add(`${sides.fromEntity.id} ${sides.fkOnFrom.name}`)
+    if (sides.fkOnTo && isMandatory(rel.fromCardinality)) {
+      notNull.add(`${sides.toEntity.id} ${sides.fkOnTo.name}`)
+    }
+    if (sides.fkOnFrom && isMandatory(rel.toCardinality)) {
+      notNull.add(`${sides.fromEntity.id} ${sides.fkOnFrom.name}`)
+    }
+    refs.push(relLine(rel, sides))
+  }
   const tables = schema.entities.map((entity) => {
-    const fields = entity.fields.map(dbmlFieldLine).join('\n')
+    const fields = entity.fields.map((f) => dbmlFieldLine(f, notNull.has(`${entity.id} ${f.name}`))).join('\n')
     return `Table ${entity.name} {\n${fields}\n}`
   })
-
-  const refs = schema.relationships
-    .map((rel) => relToDbml(rel, schema))
-    .filter(Boolean)
 
   return [...tables, '', ...refs].join('\n')
 }
