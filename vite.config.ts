@@ -16,6 +16,9 @@ interface UserRecord {
   token: string
   createdAt: string
   lastLoginAt?: string
+  lastLoginIp?: string
+  lastLoginUserAgent?: string
+  loginCount?: number
 }
 
 /** Normalize + validate an email; returns path-safe segments or null. */
@@ -133,6 +136,9 @@ function authPlugin(): Plugin {
           const file = join(dir, 'user.json')
           const record = JSON.parse(readFileSync(file, 'utf-8')) as UserRecord
           record.lastLoginAt = new Date().toISOString()
+          record.lastLoginIp = req.socket.remoteAddress ?? undefined
+          record.lastLoginUserAgent = req.headers['user-agent'] ?? undefined
+          record.loginCount = (record.loginCount ?? 0) + 1
           writeFileSync(file, JSON.stringify(record, null, 2), 'utf-8')
         } catch {
           // best effort — login already succeeded
