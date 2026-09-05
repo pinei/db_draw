@@ -6,6 +6,7 @@ import { loadModel, saveModel, AuthError } from './utils/persist'
 import DiagramCanvas from './components/DiagramCanvas.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import CodePanel from './components/CodePanel.vue'
+import ModelBar from './components/ModelBar.vue'
 import LoginPanel from './components/LoginPanel.vue'
 
 const store = useDiagramStore()
@@ -40,7 +41,7 @@ async function initModel() {
   try {
     const loaded = await loadModel('default')
     if (loaded) {
-      store.loadState(loaded)
+      store.loadState(loaded, 'default')
     } else {
       // First run — seed the user folder with the current in-memory state
       await saveModel('default', store.state)
@@ -73,6 +74,7 @@ watch(() => auth.isAuthenticated, (ok) => {
     <DiagramCanvas />
     <CodePanel />
     <SettingsPanel />
+    <ModelBar />
   </div>
 </template>
 

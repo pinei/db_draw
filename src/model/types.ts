@@ -37,6 +37,17 @@ export interface ErSchema {
   relationships: ErRelationship[]
 }
 
+// ─── Model metadata (per-model management) ──────────────────────────────────
+
+export interface ModelMeta {
+  id: string // folder name, ex. "default" — never edited in-app
+  name: string // display name
+  description: string
+  tags: string[] // each: lowercase letters/digits/underscore
+}
+
+export const TAG_PATTERN = /^[a-z0-9_]+$/
+
 // ─── Diagram Layout (presentation config) ───────────────────────────────────
 
 export type ConnectorStyle = 'curved' | 'orthogonal'
@@ -78,6 +89,7 @@ export interface EntityRect {
 }
 
 export interface DiagramState {
+  meta: ModelMeta
   schema: ErSchema
   entityPositions: Record<string, EntityRect>
   layout: DiagramLayout

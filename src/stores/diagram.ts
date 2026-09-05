@@ -4,6 +4,7 @@ import type { DiagramState, PersistedDiagramState, ConnectorStyle, NotationStyle
 import { bibliotecaSchema } from '../model/sampleData'
 import { saveModel, AuthError } from '../utils/persist'
 import { compileDbml, buildDbmlPatch } from '../utils/dbmlImport'
+import { defaultMeta, sanitizeTags, seedMeta } from '../utils/modelMeta'
 import { useAuthStore } from './auth'
 
 // Entity card dimensions used for initial layout
@@ -93,6 +94,7 @@ function buildInitialPositions(): Record<string, EntityRect> {
 
 export const useDiagramStore = defineStore('diagram', () => {
   const state = ref<DiagramState>({
+    meta: seedMeta(),
     schema: bibliotecaSchema,
     entityPositions: buildInitialPositions(),
     layout: {
@@ -267,7 +269,15 @@ export const useDiagramStore = defineStore('diagram', () => {
     return { success: true, message: patch.summary }
   }
 
-  function loadState(loaded: PersistedDiagramState) {
+  // Model metadata edits (name/description/tags) — id is the folder name and
+  // never changes here. Mutations flow into the debounced auto-save as usual.
+  function updateModelMeta(patch: { name?: string; description?: string; tags?: string[] }) {
+    if (typeof patch.name === 'string') state.value.meta.name = patch.name.trim()
+    if (typeof patch.description === 'string') state.value.meta.description = patch.description.trim()
+    if (patch.tags) state.value.meta.tags = sanitizeTags(patch.tags)
+  }
+
+  function loadState(loaded: PersistedDiagramState, modelId = 'default') {
     // UI preferences are not part of the diagram artifact — merge them back
     // from the in-memory defaults so a fresh load starts with sane UI state
     // (unknown notationStyle from older artifacts falls back to crowsfoot)
@@ -284,6 +294,7 @@ export const useDiagramStore = defineStore('diagram', () => {
     }
     state.value = {
       ...loaded,
+      meta: defaultMeta(modelId, loaded.meta),
       labelPositions,
       connectorPoints,
       layout: {
@@ -352,5 +363,6 @@ export const useDiagramStore = defineStore('diagram', () => {
     saveStatus,
     loadState,
     applyDbml,
+    updateModelMeta,
   }
 })

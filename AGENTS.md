@@ -44,6 +44,7 @@ src/
     ConnectorMarker.vue       # <defs> com todos os markers SVG por notação/cardinalidade
     SettingsPanel.vue         # controles de estilo/notação/zoom + usuário/logout + status de save
     CodePanel.vue             # painel de código DBML/Mermaid (edição + apply + highlight read-only)
+    ModelBar.vue              # barra superior: meta do model (nome/tags/descrição editáveis, id só leitura)
     LoginPanel.vue            # tela de login (e-mail + token, gerar token)
   vite.config.ts              # plugins de auth (/api/auth) e persistência (/api/models) em middleware do dev server
 data/
@@ -58,7 +59,8 @@ docs/                         # imagens/assets de documentação
 O modelo está dividido em **lógico** (schema) e **apresentação** (layout), ambos definidos em `src/model/types.ts`.
 
 - `ErSchema` = `{ entities: ErEntity[]; relationships: ErRelationship[] }` — independe de layout.
-- `DiagramState` = schema + `entityPositions` + `layout` + `connectorPoints` + `labelPositions`.
+- `DiagramState` = `meta` + schema + `entityPositions` + `layout` + `connectorPoints` + `labelPositions`.
+- `ModelMeta` = `{ id (pasta, imutável), name, description, tags[] }` — vai no `.json` do model; `id` sempre vence no load, tags sanitizadas (`modelMeta.ts`), artefatos antigos ganham backfill via `loadState(loaded, modelId)`.
 - `Cardinality`: `ONE | ONE_OR_MANY | ZERO_OR_ONE | ZERO_OR_MANY` (só combinações min/max reais; `ErRelationship` usa só essas).
 - `LogicalCardinality`: `'ONE' | 'MANY'` — placeholders não-especializados p/ modelagem lógica futura; os renderers aceitam `Cardinality | LogicalCardinality`, então os glifos do `MANY` existem em todas as notações mesmo sem uso atual.
 
