@@ -13,8 +13,8 @@ const connectorOptions: { value: ConnectorStyle; label: string }[] = [
 
 const notationOptions: { value: NotationStyle; label: string }[] = [
   { value: 'crowsfoot', label: "Crow's Foot" },
-  { value: 'arrow',     label: 'Arrow' },
-  { value: 'uml',       label: 'UML' },
+  { value: 'minmax',    label: 'Min-Max' },
+  { value: 'barker',    label: "Barker's" },
 ]
 
 const themeOptions: { value: ThemeMode; label: string }[] = [

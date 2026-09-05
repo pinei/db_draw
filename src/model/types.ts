@@ -34,7 +34,7 @@ export interface ErSchema {
 // ─── Diagram Layout (presentation config) ───────────────────────────────────
 
 export type ConnectorStyle = 'curved' | 'orthogonal'
-export type NotationStyle = 'crowsfoot' | 'arrow' | 'uml'
+export type NotationStyle = 'crowsfoot' | 'minmax' | 'barker'
 export type CodeFormat = 'dbml' | 'mermaid'
 export type ThemeMode = 'light' | 'dark' | 'system'
 

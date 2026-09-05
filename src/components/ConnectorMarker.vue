@@ -3,8 +3,16 @@ import type { NotationStyle, Cardinality } from '../model/types'
 
 defineProps<{ notationStyle: NotationStyle }>()
 
-// Marker IDs follow the pattern: `marker-{notationStyle}-{cardinality}-{end}`
-// e.g. marker-crowsfoot-MANY-end, marker-arrow-ONE-start
+// All cardinalities — used to generate the (empty) min-max markers
+const cardinalities: Cardinality[] = ['ONE', 'ONE_AND_ONLY_ONE', 'MANY', 'ONE_OR_MANY', 'ZERO_OR_ONE', 'ZERO_OR_MANY']
+
+// Barker groups: plain ends for "one" sides, crow's foot for "many" sides
+// (line style solid/dotted is set per half-path by ErConnector)
+const barkerPlain: Cardinality[] = ['ONE', 'ONE_AND_ONLY_ONE', 'ZERO_OR_ONE']
+const barkerFoot: Cardinality[] = ['MANY', 'ONE_OR_MANY', 'ZERO_OR_MANY']
+
+// Marker IDs follow the pattern: `{prefix}-{Cardinality}-{end|start}`
+// e.g. cf-MANY-end, bar-ONE-start (see AGENTS.md)
 // The ErConnector component references them by this convention.
 </script>
 
@@ -75,95 +83,36 @@ defineProps<{ notationStyle: NotationStyle }>()
       </marker>
     </template>
 
-    <!-- ── Arrow markers ───────────────────────────────────── -->
-    <template v-else-if="notationStyle === 'arrow'">
-      <!-- Filled arrowhead pointing inward for MANY, double for ONE -->
-      <marker id="arr-MANY-end"         markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-        <path d="M 0 0 L 9 4 L 0 8 Z" fill="var(--c-connector)" />
-      </marker>
-      <marker id="arr-MANY-start"       markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto-start-reverse">
-        <path d="M 10 0 L 1 4 L 10 8 Z" fill="var(--c-connector)" />
-      </marker>
-      <marker id="arr-ONE-end"          markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-        <line x1="7" y1="0" x2="7" y2="8" stroke="var(--c-connector)" stroke-width="1.5" />
-        <line x1="4" y1="0" x2="4" y2="8" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="arr-ONE-start"        markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto-start-reverse">
-        <line x1="3" y1="0" x2="3" y2="8" stroke="var(--c-connector)" stroke-width="1.5" />
-        <line x1="6" y1="0" x2="6" y2="8" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="arr-ONE_AND_ONLY_ONE-end"   markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-        <line x1="7" y1="0" x2="7" y2="8" stroke="var(--c-connector)" stroke-width="1.5" />
-        <line x1="4" y1="0" x2="4" y2="8" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="arr-ONE_AND_ONLY_ONE-start" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto-start-reverse">
-        <line x1="3" y1="0" x2="3" y2="8" stroke="var(--c-connector)" stroke-width="1.5" />
-        <line x1="6" y1="0" x2="6" y2="8" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="arr-ONE_OR_MANY-end"   markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-        <path d="M 0 0 L 9 4 L 0 8 Z" fill="var(--c-connector)" />
-      </marker>
-      <marker id="arr-ONE_OR_MANY-start" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto-start-reverse">
-        <path d="M 10 0 L 1 4 L 10 8 Z" fill="var(--c-connector)" />
-      </marker>
-      <!-- Reuse MANY for ZERO_OR_MANY / ZERO_OR_ONE — open arrow for zero -->
-      <marker id="arr-ZERO_OR_MANY-end"   markerWidth="12" markerHeight="8" refX="10" refY="4" orient="auto">
-        <path d="M 2 0 L 10 4 L 2 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-        <circle cx="2" cy="4" r="2" fill="none" stroke="var(--c-connector)" stroke-width="1.2" />
-      </marker>
-      <marker id="arr-ZERO_OR_MANY-start" markerWidth="12" markerHeight="8" refX="2"  refY="4" orient="auto-start-reverse">
-        <path d="M 10 0 L 2 4 L 10 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-        <circle cx="10" cy="4" r="2" fill="none" stroke="var(--c-connector)" stroke-width="1.2" />
-      </marker>
-      <marker id="arr-ZERO_OR_ONE-end"    markerWidth="12" markerHeight="8" refX="10" refY="4" orient="auto">
-        <line x1="8" y1="0" x2="8" y2="8" stroke="var(--c-connector)" stroke-width="1.5" />
-        <circle cx="3" cy="4" r="2" fill="none" stroke="var(--c-connector)" stroke-width="1.2" />
-      </marker>
-      <marker id="arr-ZERO_OR_ONE-start"  markerWidth="12" markerHeight="8" refX="2"  refY="4" orient="auto-start-reverse">
-        <line x1="4" y1="0" x2="4" y2="8" stroke="var(--c-connector)" stroke-width="1.5" />
-        <circle cx="9" cy="4" r="2" fill="none" stroke="var(--c-connector)" stroke-width="1.2" />
-      </marker>
+    <!-- ── Min-Max markers ─────────────────────────────────── -->
+    <!-- Plain line ends: the cardinality text annotations rendered by
+         ErConnector carry the semantics. These empty markers only exist to
+         keep the {prefix}-{Cardinality}-{end|start} convention uniform. -->
+    <template v-else-if="notationStyle === 'minmax'">
+      <template v-for="c in cardinalities" :key="c">
+        <marker :id="`mm-${c}-end`" markerWidth="1" markerHeight="1" refX="0" refY="0" orient="auto" />
+        <marker :id="`mm-${c}-start`" markerWidth="1" markerHeight="1" refX="0" refY="0" orient="auto-start-reverse" />
+      </template>
     </template>
 
-    <!-- ── UML markers ─────────────────────────────────────── -->
-    <template v-else-if="notationStyle === 'uml'">
-      <!-- Open arrowhead for association (all cardinalities use the same shape) -->
-      <marker id="uml-MANY-end"         markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-        <path d="M 0 0 L 9 4 L 0 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="uml-MANY-start"       markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto-start-reverse">
-        <path d="M 10 0 L 1 4 L 10 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="uml-ONE-end"          markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-        <path d="M 0 0 L 9 4 L 0 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="uml-ONE-start"        markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto-start-reverse">
-        <path d="M 10 0 L 1 4 L 10 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="uml-ONE_AND_ONLY_ONE-end"   markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-        <path d="M 0 0 L 9 4 L 0 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="uml-ONE_AND_ONLY_ONE-start" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto-start-reverse">
-        <path d="M 10 0 L 1 4 L 10 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="uml-ONE_OR_MANY-end"   markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-        <path d="M 0 0 L 9 4 L 0 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="uml-ONE_OR_MANY-start" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto-start-reverse">
-        <path d="M 10 0 L 1 4 L 10 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="uml-ZERO_OR_MANY-end"   markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-        <path d="M 0 0 L 9 4 L 0 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="uml-ZERO_OR_MANY-start" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto-start-reverse">
-        <path d="M 10 0 L 1 4 L 10 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="uml-ZERO_OR_ONE-end"    markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-        <path d="M 0 0 L 9 4 L 0 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
-      <marker id="uml-ZERO_OR_ONE-start"  markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto-start-reverse">
-        <path d="M 10 0 L 1 4 L 10 8" fill="none" stroke="var(--c-connector)" stroke-width="1.5" />
-      </marker>
+    <!-- ── Barker markers ──────────────────────────────────── -->
+    <!-- "One" ends are plain; "many" ends get a crow's foot -->
+    <template v-else-if="notationStyle === 'barker'">
+      <template v-for="c in barkerPlain" :key="c">
+        <marker :id="`bar-${c}-end`" markerWidth="1" markerHeight="1" refX="0" refY="0" orient="auto" />
+        <marker :id="`bar-${c}-start`" markerWidth="1" markerHeight="1" refX="0" refY="0" orient="auto-start-reverse" />
+      </template>
+      <template v-for="c in barkerFoot" :key="c">
+        <marker :id="`bar-${c}-end`" markerWidth="13" markerHeight="12" refX="11" refY="6" orient="auto">
+          <line x1="3" y1="6" x2="11" y2="1"  stroke="var(--c-connector)" stroke-width="1.5" />
+          <line x1="3" y1="6" x2="11" y2="6"  stroke="var(--c-connector)" stroke-width="1.5" />
+          <line x1="3" y1="6" x2="11" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
+        </marker>
+        <marker :id="`bar-${c}-start`" markerWidth="13" markerHeight="12" refX="2" refY="6" orient="auto-start-reverse">
+          <line x1="10" y1="6" x2="2" y2="1"  stroke="var(--c-connector)" stroke-width="1.5" />
+          <line x1="10" y1="6" x2="2" y2="6"  stroke="var(--c-connector)" stroke-width="1.5" />
+          <line x1="10" y1="6" x2="2" y2="11" stroke="var(--c-connector)" stroke-width="1.5" />
+        </marker>
+      </template>
     </template>
   </defs>
 </template>

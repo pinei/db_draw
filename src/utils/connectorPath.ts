@@ -17,23 +17,36 @@ function dist(a: Point, b: Point): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)
 }
 
-/**
- * Smooth cubic bezier path. Control points follow the outgoing tangent of each
- * endpoint so the path always leaves/arrives perpendicular to the entity edge.
- */
-export function bezierPath(src: ConnectionPoint, tgt: ConnectionPoint): string {
-  const p1 = src.point
-  const p2 = tgt.point
-  const d  = dist(p1, p2)
+interface Cubic {
+  p0: Point
+  c1: Point
+  c2: Point
+  p3: Point
+}
+
+/** Control points for the smooth cubic bezier: they follow the outgoing tangent
+ *  of each endpoint so the path always leaves/arrives perpendicular to the entity edge. */
+function cubicBezier(src: ConnectionPoint, tgt: ConnectionPoint): Cubic {
+  const p0 = src.point
+  const p3 = tgt.point
+  const d  = dist(p0, p3)
   const offset = Math.max(40, d * BEZIER_TENSION)
 
   const t1 = tangent(src.side)
   const t2 = tangent(tgt.side)
 
-  const cp1 = { x: p1.x + t1.x * offset, y: p1.y + t1.y * offset }
-  const cp2 = { x: p2.x + t2.x * offset, y: p2.y + t2.y * offset }
+  return {
+    p0,
+    c1: { x: p0.x + t1.x * offset, y: p0.y + t1.y * offset },
+    c2: { x: p3.x + t2.x * offset, y: p3.y + t2.y * offset },
+    p3,
+  }
+}
 
-  return `M ${p1.x} ${p1.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p2.x} ${p2.y}`
+/** Smooth cubic bezier path. */
+export function bezierPath(src: ConnectionPoint, tgt: ConnectionPoint): string {
+  const { p0, c1, c2, p3 } = cubicBezier(src, tgt)
+  return `M ${p0.x} ${p0.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p3.x} ${p3.y}`
 }
 
 /**
@@ -43,7 +56,8 @@ export function bezierPath(src: ConnectionPoint, tgt: ConnectionPoint): string {
  *   - vertical exit/entry sides (top/bottom): route via a horizontal midpoint
  *   - mixed sides: step to a corner then go straight
  */
-export function orthogonalPath(src: ConnectionPoint, tgt: ConnectionPoint): string {
+/** Corner points of the orthogonal (Manhattan) route (see strategy below). */
+function orthogonalCorners(src: ConnectionPoint, tgt: ConnectionPoint): Point[] {
   const p1 = src.point
   const p2 = tgt.point
   const s1 = src.side
@@ -52,23 +66,93 @@ export function orthogonalPath(src: ConnectionPoint, tgt: ConnectionPoint): stri
   const isH1 = s1 === 'left' || s1 === 'right'
   const isH2 = s2 === 'left' || s2 === 'right'
 
-  let points: Point[]
-
   if (isH1 && isH2) {
     // Both horizontal — meet at vertical midpoint
     const midX = (p1.x + p2.x) / 2
-    points = [p1, { x: midX, y: p1.y }, { x: midX, y: p2.y }, p2]
+    return [p1, { x: midX, y: p1.y }, { x: midX, y: p2.y }, p2]
   } else if (!isH1 && !isH2) {
     // Both vertical — meet at horizontal midpoint
     const midY = (p1.y + p2.y) / 2
-    points = [p1, { x: p1.x, y: midY }, { x: p2.x, y: midY }, p2]
+    return [p1, { x: p1.x, y: midY }, { x: p2.x, y: midY }, p2]
   } else if (isH1 && !isH2) {
     // Source horizontal, target vertical — elbow at (p2.x, p1.y)
-    points = [p1, { x: p2.x, y: p1.y }, p2]
+    return [p1, { x: p2.x, y: p1.y }, p2]
   } else {
     // Source vertical, target horizontal — elbow at (p1.x, p2.y)
-    points = [p1, { x: p1.x, y: p2.y }, p2]
+    return [p1, { x: p1.x, y: p2.y }, p2]
   }
+}
 
+export function orthogonalPath(src: ConnectionPoint, tgt: ConnectionPoint): string {
+  const points = orthogonalCorners(src, tgt)
   return 'M ' + points.map((p) => `${p.x} ${p.y}`).join(' L ')
+}
+
+// ─── Path splitting (Barker notation: per-half line styles) ─────────────────
+
+export interface PathHalves {
+  first: string
+  second: string
+}
+
+function mid(a: Point, b: Point): Point {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
+
+function fmt(p: Point): string {
+  return `${p.x} ${p.y}`
+}
+
+function polylineLength(pts: Point[]): number {
+  let L = 0
+  for (let i = 1; i < pts.length; i++) L += dist(pts[i - 1], pts[i])
+  return L
+}
+
+/** Splits the cubic bezier into two halves at its midpoint (De Casteljau, t = 0.5). */
+export function splitBezierPath(src: ConnectionPoint, tgt: ConnectionPoint): PathHalves {
+  const { p0, c1, c2, p3 } = cubicBezier(src, tgt)
+  const m1 = mid(p0, c1)
+  const m2 = mid(c1, c2)
+  const m3 = mid(c2, p3)
+  const m12 = mid(m1, m2)
+  const m23 = mid(m2, m3)
+  const m = mid(m12, m23)
+  return {
+    first:  `M ${fmt(p0)} C ${fmt(m1)}, ${fmt(m12)}, ${fmt(m)}`,
+    second: `M ${fmt(m)} C ${fmt(m23)}, ${fmt(m3)}, ${fmt(p3)}`,
+  }
+}
+
+/** Splits the orthogonal polyline into two halves at its length midpoint. */
+export function splitOrthogonalPath(src: ConnectionPoint, tgt: ConnectionPoint): PathHalves {
+  const pts = orthogonalCorners(src, tgt)
+  const total = polylineLength(pts)
+  if (total === 0) {
+    // Degenerate connector — render a dot for both halves
+    const d = `M ${fmt(pts[0])}`
+    return { first: d, second: d }
+  }
+  const half = total / 2
+  const first: Point[] = [pts[0]]
+  let acc = 0
+  for (let i = 1; i < pts.length; i++) {
+    const segLen = dist(pts[i - 1], pts[i])
+    if (acc + segLen >= half) {
+      const t = segLen === 0 ? 0 : (half - acc) / segLen
+      const m = {
+        x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * t,
+        y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * t,
+      }
+      first.push(m)
+      return {
+        first:  'M ' + first.map(fmt).join(' L '),
+        second: 'M ' + [m, ...pts.slice(i)].map(fmt).join(' L '),
+      }
+    }
+    acc += segLen
+    first.push(pts[i])
+  }
+  // Unreachable fallback — whole polyline as the first half
+  return { first: 'M ' + pts.map(fmt).join(' L '), second: `M ${fmt(pts[pts.length - 1])}` }
 }

@@ -189,6 +189,8 @@ export const useDiagramStore = defineStore('diagram', () => {
   function loadState(loaded: PersistedDiagramState) {
     // UI preferences are not part of the diagram artifact — merge them back
     // from the in-memory defaults so a fresh load starts with sane UI state
+    // (unknown notationStyle from older artifacts falls back to crowsfoot)
+    const validNotations: NotationStyle[] = ['crowsfoot', 'minmax', 'barker']
     state.value = {
       ...loaded,
       layout: {
@@ -196,6 +198,9 @@ export const useDiagramStore = defineStore('diagram', () => {
         codePanelOpen: true,
         theme: 'system',
         ...loaded.layout,
+        notationStyle: validNotations.includes(loaded.layout.notationStyle)
+          ? loaded.layout.notationStyle
+          : 'crowsfoot',
       },
     }
   }

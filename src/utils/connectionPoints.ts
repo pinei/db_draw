@@ -105,6 +105,56 @@ export function resolveLabelPosition(pos: LabelPosition, source: Point, target: 
   }
 }
 
+// Fixed gaps for Min-Max end annotations (px, measured from the text edge)
+const MINMAX_ENTITY_GAP = 5 // line anchor → away from the entity, along the edge outward normal
+const MINMAX_LINE_GAP = 12   // text edge → line
+
+export interface MinMaxLabelPlacement {
+  x: number
+  y: number
+  anchor: 'start' | 'middle' | 'end'
+  baseline: 'central' | 'alphabetic' | 'hanging'
+}
+
+/** Outward unit normal for an edge side */
+function edgeNormal(side: EdgeSide): Point {
+  switch (side) {
+    case 'right':  return { x: 1,  y: 0 }
+    case 'left':   return { x: -1, y: 0 }
+    case 'bottom': return { x: 0,  y: 1 }
+    case 'top':    return { x: 0,  y: -1 }
+  }
+}
+
+/**
+ * Placement for a Min-Max cardinality annotation at a connection point.
+ * Depends only on the endpoint + entity geometry (never on line direction),
+ * so the text stays on a fixed side: the anchor sits on the line,
+ * MINMAX_ENTITY_GAP away from the entity, and the text edge nearest the line
+ * is exactly MINMAX_LINE_GAP away — via text-anchor/dominant-baseline, so the
+ * gap holds regardless of text width. The text goes on the outer side: the
+ * side pointing toward the nearest corner of the entity (ties go +).
+ */
+export function minMaxLabelPosition(conn: ConnectionPoint, entity: EntityRect): MinMaxLabelPlacement {
+  const n = edgeNormal(conn.side)
+  const p = conn.point
+  const g = MINMAX_LINE_GAP
+  const lx = p.x + n.x * MINMAX_ENTITY_GAP
+  const ly = p.y + n.y * MINMAX_ENTITY_GAP
+  if (conn.side === 'top' || conn.side === 'bottom') {
+    // Text beside the (initially vertical) line: anchor the edge nearest the line
+    return p.x < entity.x + entity.width / 2
+      ? { x: lx - g, y: ly, anchor: 'end',   baseline: 'central' }
+      : { x: lx + g, y: ly, anchor: 'start', baseline: 'central' }
+  }
+  // Text above/below the (initially horizontal) line: digit glyphs have no
+  // descenders, so the alphabetic baseline is the text bottom edge; hanging
+  // is the text top edge
+  return p.y < entity.y + entity.height / 2
+    ? { x: lx, y: ly - g, anchor: 'middle', baseline: 'alphabetic' }
+    : { x: lx, y: ly + g, anchor: 'middle', baseline: 'hanging' }
+}
+
 /** Projects an absolute point onto a connector line, returning {fraction, perp} relative coords. */
 export function snapToConnector(pt: Point, source: Point, target: Point): LabelPosition {
   const dx = target.x - source.x

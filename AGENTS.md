@@ -85,7 +85,11 @@ Nota: importar DBML **de volta** para o schema ainda não está totalmente imple
 `validateDbml` em `utils/persist.ts` usa `@dbml/parse` (`Compiler` + `MemoryProjectLayout` + `Filepath`). Ver `DBML_PARSE_*.md` (4 arquivos na raiz) para referência completa da API do `@dbml/parse`.
 
 ### Notação / markers
-A convenção de ID dos markers SVG é `{prefixo}-{Cardinality}-{end|start}`, onde prefixo = `cf` (crowsfoot), `arr` (arrow) ou `uml`. `ConnectorMarker.vue` os define no `<defs>` e `ErConnector.vue` os referencia. Se adicionar uma cardinalidade ou notação, ambos os arquivos precisam ser atualizados de forma consistente.
+A convenção de ID dos markers SVG é `{prefixo}-{Cardinality}-{end|start}`, onde prefixo = `cf` (crowsfoot), `mm` (minmax) ou `bar` (barker). `ConnectorMarker.vue` os define no `<defs>` e `ErConnector.vue` os referencia. Se adicionar uma cardinalidade ou notação, ambos os arquivos precisam ser atualizados de forma consistente. (`arrow`/`uml` foram removidos; `loadState` faz fallback para `crowsfoot` se o artefato trouxer notação desconhecida.)
+
+Exceção: `minmax` usa extremidades sem símbolo (markers `mm-*` vazios, gerados via `v-for`) e a cardinalidade vai como **texto** nas pontas (`1`, `0..1`, `*`, `1..*`, `0..*`), via `cardinalityToMinMax` em `ErConnector.vue`. O posicionamento é fixo e determinístico via `minMaxLabelPosition` em `connectionPoints.ts`: 20px da entidade (normal da aresta) + 12px da linha medidos da **borda** do texto (via `text-anchor`/`dominant-baseline` dinâmicos), lado externo = canto mais próximo, nunca relativo à direção da linha. Notação é só apresentação — os serializers DBML/Mermaid (baseados em cardinalidade) não mudam.
+
+Exceção: `barker` combina símbolo (pé-de-galinha só nos lados "muitos", markers `bar-*`) com estilo de linha por metade (sólida = mandatório, pontilhada = opcional). `ErConnector.vue` divide o path em duas metades (`splitBezierPath`/`splitOrthogonalPath` em `connectorPath.ts`: De Casteljau t=0.5 / ponto médio do comprimento) e aplica `barker-optional` por ponta. `MANY` (bare) conta como mandatório, consistente com os serializers.
 
 ## Convenções de código
 

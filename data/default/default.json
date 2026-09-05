@@ -383,26 +383,26 @@
   },
   "entityPositions": {
     "editora": {
-      "x": -193.26929392446635,
-      "y": 115.88834154351392,
+      "x": -40.376685976240864,
+      "y": -8.273040270815798,
       "width": 220,
       "height": 128
     },
     "categoria": {
-      "x": 360.04761904761904,
-      "y": 106.4285714285714,
+      "x": 424.17274123725747,
+      "y": -40.90769445608176,
       "width": 220,
       "height": 128
     },
     "autor": {
-      "x": 668,
-      "y": -55,
+      "x": 975.8571428571432,
+      "y": -31.428571428571406,
       "width": 220,
       "height": 128
     },
     "livro": {
-      "x": 75.7142857142857,
-      "y": 401.1428571428571,
+      "x": 82.97235023041475,
+      "y": 404.36866359447004,
       "width": 220,
       "height": 212
     },
@@ -419,14 +419,14 @@
       "height": 156
     },
     "emprestimo": {
-      "x": 55.38095238095239,
-      "y": 793.5238095238096,
+      "x": -150.57010434874755,
+      "y": 740.4648551300388,
       "width": 220,
       "height": 184
     },
     "multa": {
-      "x": 554,
-      "y": 805,
+      "x": 318.3492769744157,
+      "y": 1010.895439377086,
       "width": 220,
       "height": 156
     },
@@ -439,10 +439,10 @@
   },
   "layout": {
     "connectorStyle": "orthogonal",
-    "notationStyle": "uml",
+    "notationStyle": "crowsfoot",
     "canvasOffset": {
-      "x": 722,
-      "y": 362
+      "x": 405,
+      "y": 252
     },
     "canvasScale": 0.9999999999999983
   },
@@ -450,8 +450,8 @@
     "rel_emprestimo_multa": {
       "to": {
         "entityId": "multa",
-        "side": "left",
-        "fraction": 0.8333333333333334
+        "side": "top",
+        "fraction": 0.6387349580341833
       },
       "from": {
         "entityId": "emprestimo",
@@ -463,7 +463,7 @@
       "to": {
         "entityId": "livro",
         "side": "top",
-        "fraction": 0.7363636363636363
+        "fraction": 0.7077014383465996
       },
       "from": {
         "entityId": "categoria",
@@ -475,7 +475,12 @@
       "to": {
         "entityId": "livro",
         "side": "top",
-        "fraction": 0.21363636363636362
+        "fraction": 0.2556515274731596
+      },
+      "from": {
+        "entityId": "editora",
+        "side": "bottom",
+        "fraction": 0.4225586039672394
       }
     },
     "rel_livro_autor_autor": {
@@ -490,6 +495,11 @@
         "entityId": "emprestimo",
         "side": "top",
         "fraction": 0.5924242424242423
+      },
+      "from": {
+        "entityId": "livro",
+        "side": "left",
+        "fraction": 0.6679201808538422
       }
     },
     "rel_livro_autor_livro": {
@@ -511,12 +521,12 @@
       "perp": -20.75715899225171
     },
     "rel_editora_livro": {
-      "fraction": 0.40294927450549817,
-      "perp": -26.394034490227902
+      "fraction": 0.4283905208931625,
+      "perp": 7.312062173403007
     },
     "rel_emprestimo_usuario": {
-      "fraction": 0.42245277755662525,
-      "perp": 39.07869721883691
+      "fraction": 0.45792233184601994,
+      "perp": 18.039036755236737
     },
     "rel_emprestimo_multa": {
       "fraction": 0.47020024402497657,
