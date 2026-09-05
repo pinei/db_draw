@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import AppLogo from './AppLogo.vue'
 
 const auth = useAuthStore()
 const email = ref(auth.email ?? '')
@@ -49,7 +50,7 @@ async function handleGenerate() {
 <template>
   <div class="login-root">
     <div class="login-card">
-      <div class="login-title">DB Diagram</div>
+      <AppLogo class="login-logo" />
       <div class="login-subtitle">Sign in with email and token</div>
 
       <label class="login-field">
@@ -103,17 +104,16 @@ async function handleGenerate() {
   border: 1px solid var(--c-panel-border);
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
-  padding: 28px 28px 24px;
-  width: 340px;
+  padding: 24px 28px 24px;
+  width: 360px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.login-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--c-field-name);
+.login-logo {
+  width: 220px;
+  margin: 0 auto 4px;
 }
 
 .login-subtitle {
