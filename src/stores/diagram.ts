@@ -95,6 +95,22 @@ function buildInitialPositions(): Record<string, EntityRect> {
   return positions
 }
 
+// Drop layout overrides that no longer match the schema (e.g. blank models
+// seeded before entityPositions were cleared on create).
+function pruneOrphanPresentation(state: Pick<DiagramState, 'schema' | 'entityPositions' | 'connectorPoints' | 'labelPositions'>) {
+  const entityIds = new Set(state.schema.entities.map((e) => e.id))
+  for (const id of Object.keys(state.entityPositions)) {
+    if (!entityIds.has(id)) delete state.entityPositions[id]
+  }
+  const relIds = new Set(state.schema.relationships.map((r) => r.id))
+  for (const id of Object.keys(state.connectorPoints)) {
+    if (!relIds.has(id)) delete state.connectorPoints[id]
+  }
+  for (const id of Object.keys(state.labelPositions)) {
+    if (!relIds.has(id)) delete state.labelPositions[id]
+  }
+}
+
 // Factory for pristine state — deep-clones the sample schema so resets can
 // never cross-contaminate the module const (nor leak one user's diagram into
 // another user's freshly seeded folder via the in-memory state)
@@ -325,7 +341,12 @@ export const useDiagramStore = defineStore('diagram', () => {
   // models start with an empty canvas (no sample entities).
   function seedFreshModel(id: string, opts: { name?: string; description?: string; tags?: string[]; blank?: boolean } = {}) {
     resetState()
-    if (opts.blank) state.value.schema = { entities: [], relationships: [] }
+    if (opts.blank) {
+      state.value.schema = { entities: [], relationships: [] }
+      state.value.entityPositions = {}
+      state.value.connectorPoints = {}
+      state.value.labelPositions = {}
+    }
     state.value.meta = {
       id,
       name: opts.name?.trim() || id,
@@ -342,6 +363,7 @@ export const useDiagramStore = defineStore('diagram', () => {
     const validNotations: NotationStyle[] = ['crowsfoot', 'minmax', 'barker']
     // Self-loops use fully derived geometry — drop any stored overrides
     // (stale values would stick labels/handles inside the card, unreachable)
+    const entityPositions = { ...loaded.entityPositions }
     const labelPositions = { ...loaded.labelPositions }
     const connectorPoints = { ...loaded.connectorPoints }
     for (const rel of loaded.schema.relationships) {
@@ -350,9 +372,11 @@ export const useDiagramStore = defineStore('diagram', () => {
         delete connectorPoints[rel.id]
       }
     }
+    pruneOrphanPresentation({ schema: loaded.schema, entityPositions, connectorPoints, labelPositions })
     state.value = {
       ...loaded,
       meta: defaultMeta(modelId, loaded.meta),
+      entityPositions,
       labelPositions,
       connectorPoints,
       layout: {
