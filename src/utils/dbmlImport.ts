@@ -102,7 +102,7 @@ function offsetToLineCol(text: string, offset: unknown): string {
 
 function formatIssues(text: string, issues: DbmlIssue[]): string {
   return issues
-    .map((e) => `${offsetToLineCol(text, e.start)} ${String(e.message ?? 'erro')}`)
+    .map((e) => `${offsetToLineCol(text, e.start)} ${String(e.message ?? 'error')}`)
     .join('; ')
 }
 
@@ -172,11 +172,11 @@ export function compileDbml(text: string): { ok: true; value: CompiledDbml } | {
     return { ok: false, message: `✗ ${formatIssues(text, rest)}` }
   }
   const db = result.getValue() as unknown as ParsedDb | undefined
-  if (!db) return { ok: false, message: '✗ Erro: parse sem resultado' }
+  if (!db) return { ok: false, message: '✗ Error: parse produced no result' }
 
   const tables = (db.tables ?? []).filter((t) => typeof t.name === 'string')
   if (tables.length === 0) {
-    return { ok: false, message: '✗ Nada para aplicar — nenhum Table no código' }
+    return { ok: false, message: '✗ Nothing to apply — no Table blocks in code' }
   }
   const knownTables = new Set(tables.map((t) => t.name as string))
 
@@ -515,8 +515,8 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
   }
   const eBits = `+${stats.createdEntities} −${stats.removedEntities} ~${stats.changedEntities}`
   const rBits = `+${stats.createdRels} −${stats.removedRels} ~${stats.changedRels}`
-  const ign = stats.ignored > 0 ? `; ${stats.ignored} ignorado${stats.ignored > 1 ? 's' : ''}` : ''
-  const summary = `✓ Aplicado — ${stats.tables} tabelas, ${stats.rels} relações (tabelas ${eBits}; relações ${rBits}${ign})`
+  const ign = stats.ignored > 0 ? `; ${stats.ignored} ignored` : ''
+  const summary = `✓ Applied — ${stats.tables} tables, ${stats.rels} relationships (tables ${eBits}; relationships ${rBits}${ign})`
 
   return {
     schema,

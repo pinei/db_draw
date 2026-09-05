@@ -16,14 +16,14 @@ function setMessage(text: string, kind: 'info' | 'error') {
 
 async function handleLogin() {
   if (!email.value.trim() || !token.value.trim()) {
-    setMessage('Informe e-mail e token.', 'error')
+    setMessage('Enter email and token.', 'error')
     return
   }
   busy.value = true
   try {
     await auth.login(email.value, token.value)
   } catch (e) {
-    setMessage(e instanceof Error ? e.message : 'Falha no login.', 'error')
+    setMessage(e instanceof Error ? e.message : 'Login failed.', 'error')
   } finally {
     busy.value = false
   }
@@ -31,7 +31,7 @@ async function handleLogin() {
 
 async function handleGenerate() {
   if (!email.value.trim()) {
-    setMessage('Informe o e-mail para gerar o token.', 'error')
+    setMessage('Enter an email to generate a token.', 'error')
     return
   }
   busy.value = true
@@ -39,7 +39,7 @@ async function handleGenerate() {
     const msg = await auth.generateToken(email.value)
     setMessage(msg, 'info')
   } catch (e) {
-    setMessage(e instanceof Error ? e.message : 'Falha ao gerar token.', 'error')
+    setMessage(e instanceof Error ? e.message : 'Failed to generate token.', 'error')
   } finally {
     busy.value = false
   }
@@ -50,14 +50,14 @@ async function handleGenerate() {
   <div class="login-root">
     <div class="login-card">
       <div class="login-title">DB Diagram</div>
-      <div class="login-subtitle">Entre com e-mail e token</div>
+      <div class="login-subtitle">Sign in with email and token</div>
 
       <label class="login-field">
-        <span>E-mail</span>
+        <span>Email</span>
         <input
           v-model="email"
           type="email"
-          placeholder="voce@exemplo.com"
+          placeholder="you@example.com"
           autocomplete="email"
           :disabled="busy"
           @keyup.enter="handleLogin"
@@ -69,7 +69,7 @@ async function handleGenerate() {
         <input
           v-model="token"
           type="password"
-          placeholder="cole o token aqui"
+          placeholder="paste token here"
           autocomplete="current-password"
           :disabled="busy"
           @keyup.enter="handleLogin"
@@ -77,8 +77,8 @@ async function handleGenerate() {
       </label>
 
       <div class="login-actions">
-        <button class="btn primary" :disabled="busy" @click="handleLogin">Entrar</button>
-        <button class="btn" :disabled="busy" @click="handleGenerate">Gerar token</button>
+        <button class="btn primary" :disabled="busy" @click="handleLogin">Sign in</button>
+        <button class="btn" :disabled="busy" @click="handleGenerate">Generate token</button>
       </div>
 
       <div v-if="message" class="login-message" :class="messageKind">

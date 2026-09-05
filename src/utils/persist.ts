@@ -8,7 +8,7 @@ const BASE = '/api/models'
 const AUTH_BASE = '/api/auth'
 
 export class AuthError extends Error {
-  constructor(message = 'Sessão inválida — entre novamente') {
+  constructor(message = 'Invalid session — please sign in again') {
     super(message)
     this.name = 'AuthError'
   }
@@ -30,11 +30,11 @@ export async function requestToken(email: string): Promise<string> {
       body: JSON.stringify({ email }),
     })
   } catch {
-    throw new Error('Servidor indisponível — rode npm run dev')
+    throw new Error('Server unavailable — run npm run dev')
   }
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `Falha ao gerar token: ${res.status}`)
-  return typeof data.message === 'string' ? data.message : 'Token gerado'
+  if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `Failed to generate token: ${res.status}`)
+  return typeof data.message === 'string' ? data.message : 'Token generated'
 }
 
 export interface LoginResult {
@@ -51,12 +51,12 @@ export async function loginRequest(email: string, token: string): Promise<LoginR
       body: JSON.stringify({ email, token }),
     })
   } catch {
-    throw new Error('Servidor indisponível — rode npm run dev')
+    throw new Error('Server unavailable — run npm run dev')
   }
-  if (res.status === 401) throw new Error('E-mail ou token inválido')
-  if (!res.ok) throw new Error(`Falha no login: ${res.status}`)
+  if (res.status === 401) throw new Error('Invalid email or token')
+  if (!res.ok) throw new Error(`Login failed: ${res.status}`)
   const data = await res.json().catch(() => ({})) as { email?: unknown; lastModelId?: unknown }
-  if (typeof data.email !== 'string') throw new Error('Resposta inesperada do servidor')
+  if (typeof data.email !== 'string') throw new Error('Unexpected server response')
   return {
     email: data.email,
     lastModelId: typeof data.lastModelId === 'string' ? data.lastModelId : null,
@@ -71,9 +71,9 @@ export function validateDbml(text: string): { success: boolean; message: string 
     if (!compiled.ok) return { success: false, message: compiled.message }
     const { tables, refs } = compiled.value
     const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
-    return { success: true, message: `✓ DBML válido — ${tables.length} ${plural(tables.length, 'tabela', 'tabelas')}, ${refs.length} ${plural(refs.length, 'relação', 'relações')}` }
+    return { success: true, message: `✓ Valid DBML — ${tables.length} ${plural(tables.length, 'table', 'tables')}, ${refs.length} ${plural(refs.length, 'relationship', 'relationships')}` }
   } catch (err: unknown) {
-    return { success: false, message: `✗ Erro: ${err instanceof Error ? err.message : String(err)}` }
+    return { success: false, message: `✗ Error: ${err instanceof Error ? err.message : String(err)}` }
   }
 }
 
@@ -82,7 +82,7 @@ export async function listModels(): Promise<ModelSummary[]> {
   try {
     res = await fetch(BASE, { headers: authHeaders() })
   } catch {
-    throw new Error('Servidor indisponível — rode npm run dev')
+    throw new Error('Server unavailable — run npm run dev')
   }
   if (res.status === 401) throw new AuthError()
   if (!res.ok) throw new Error(`Failed to list models: ${res.status}`)

@@ -426,8 +426,8 @@ export const useDiagramStore = defineStore('diagram', () => {
       }
       return { success: true }
     } catch (e) {
-      if (e instanceof AuthError) { useAuthStore().logout(); return { success: false, message: 'Sessão inválida — entre novamente' } }
-      return { success: false, message: e instanceof Error ? e.message : 'Falha ao abrir modelo' }
+      if (e instanceof AuthError) { useAuthStore().logout(); return { success: false, message: 'Invalid session — please sign in again' } }
+      return { success: false, message: e instanceof Error ? e.message : 'Failed to open model' }
     }
   }
 
@@ -437,24 +437,24 @@ export const useDiagramStore = defineStore('diagram', () => {
   ): Promise<{ success: boolean; message?: string }> {
     const clean = id.trim().toLowerCase()
     if (!MODEL_ID_RE.test(clean)) {
-      return { success: false, message: 'ID inválido — use letras, números, _ ou -' }
+      return { success: false, message: 'Invalid ID — use letters, numbers, _ or -' }
     }
     try {
       const existing = await listModels()
       if (existing.some((m) => m.id === clean)) {
-        return { success: false, message: `Modelo "${clean}" já existe` }
+        return { success: false, message: `Model "${clean}" already exists` }
       }
     } catch (e) {
-      if (e instanceof AuthError) { useAuthStore().logout(); return { success: false, message: 'Sessão inválida — entre novamente' } }
-      return { success: false, message: e instanceof Error ? e.message : 'Falha ao listar modelos' }
+      if (e instanceof AuthError) { useAuthStore().logout(); return { success: false, message: 'Invalid session — please sign in again' } }
+      return { success: false, message: e instanceof Error ? e.message : 'Failed to list models' }
     }
     await flushSave()
     seedFreshModel(clean, { blank: true, ...meta })
     try {
       await persistCurrent()
     } catch (e) {
-      if (e instanceof AuthError) { useAuthStore().logout(); return { success: false, message: 'Sessão inválida — entre novamente' } }
-      return { success: false, message: e instanceof Error ? e.message : 'Falha ao criar modelo' }
+      if (e instanceof AuthError) { useAuthStore().logout(); return { success: false, message: 'Invalid session — please sign in again' } }
+      return { success: false, message: e instanceof Error ? e.message : 'Failed to create model' }
     }
     return { success: true }
   }

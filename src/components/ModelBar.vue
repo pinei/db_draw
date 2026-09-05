@@ -129,7 +129,7 @@ function onKeydown(e: KeyboardEvent) {
 
     <ModelManager v-if="showManager" @close="showManager = false" />
 
-    <div v-if="open || showManager" class="backdrop" @click="open = false; showManager = false" />
+    <div v-if="open" class="backdrop" @click="open = false" />
   </div>
 </template>
 

@@ -134,7 +134,7 @@ function authPlugin(): Plugin {
           writeFileSync(join(dir, 'user.json'), JSON.stringify(record, null, 2), 'utf-8')
           // Dev phase: no email delivery — token goes to the server stdout
           console.log(`[auth] token for ${parsed.email}: ${token}`)
-          sendJson(res, 200, { message: 'Token gerado — verifique o console do servidor (npm run dev)' })
+          sendJson(res, 200, { message: 'Token generated — check the dev server console (npm run dev)' })
           return
         }
 
