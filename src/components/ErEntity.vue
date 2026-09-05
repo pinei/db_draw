@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, nextTick } from 'vue'
 import type { ErEntity, EntityRect } from '../model/types'
 
 const props = defineProps<{
@@ -16,13 +16,24 @@ const emit = defineEmits<{
 // foreignObject element ref for measuring actual rendered height
 const cardRef = ref<HTMLElement | null>(null)
 
-onMounted(() => {
-  if (cardRef.value) {
-    const h = cardRef.value.offsetHeight
-    if (h > 0 && Math.abs(h - props.rect.height) > 2) {
-      emit('resize', props.entity.id, props.rect.width, h)
-    }
+// scrollHeight (not offsetHeight: the card is height:100% + overflow:hidden,
+// so offsetHeight is just the clipped box) — grows AND shrinks with content
+function syncHeight() {
+  if (!cardRef.value) return
+  const h = cardRef.value.scrollHeight
+  if (h > 0 && Math.abs(h - props.rect.height) > 2) {
+    emit('resize', props.entity.id, props.rect.width, h)
   }
+}
+
+onMounted(() => {
+  syncHeight()
+})
+
+// Fields arriving via DBML Apply (or any schema change) must reflow the card:
+// without this the new rows render clipped inside the stale rect height
+watch(() => props.entity.fields.length, () => {
+  nextTick(syncHeight)
 })
 
 function onMouseDown(evt: MouseEvent) {

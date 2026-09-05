@@ -3,7 +3,6 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
 import { generateDbml, generateMermaid } from '../utils/codePlaceholder'
 import { highlightDbml, highlightMermaid } from '../utils/dbmlHighlight'
-import { validateDbml } from '../utils/persist'
 import type { CodeFormat } from '../model/types'
 
 const store = useDiagramStore()
@@ -67,15 +66,37 @@ const previewHint = computed(() =>
 )
 
 const editing = ref(false)
+const previewEl = ref<HTMLElement | null>(null)
+const savedScroll = { top: 0, left: 0 }
 
 function startEdit() {
   if (!isEditable.value || editing.value) return
+  if (previewEl.value) {
+    savedScroll.top = previewEl.value.scrollTop
+    savedScroll.left = previewEl.value.scrollLeft
+  }
   editing.value = true
-  nextTick(() => textareaEl.value?.focus())
+  nextTick(() => {
+    if (textareaEl.value) {
+      textareaEl.value.scrollTop = savedScroll.top
+      textareaEl.value.scrollLeft = savedScroll.left
+      textareaEl.value.focus()
+    }
+  })
 }
 
 function stopEdit() {
+  if (textareaEl.value) {
+    savedScroll.top = textareaEl.value.scrollTop
+    savedScroll.left = textareaEl.value.scrollLeft
+  }
   editing.value = false
+  nextTick(() => {
+    if (previewEl.value) {
+      previewEl.value.scrollTop = savedScroll.top
+      previewEl.value.scrollLeft = savedScroll.left
+    }
+  })
 }
 
 function blurOnEscape(e: KeyboardEvent) {
@@ -93,14 +114,12 @@ watch(() => draftDbml.value, () => {
 })
 
 function handleApply() {
-  const result = validateDbml(draftDbml.value)
-  if (result.success) {
-    parseStatus.value = 'success'
-    parseMessage.value = result.message
-  } else {
-    parseStatus.value = 'error'
-    parseMessage.value = result.message
-  }
+  // Single-step incremental sync: validates, diffs by exact name and patches
+  // the schema in one mutation. Matched ids (hence layout) are preserved; the
+  // draft resyncs from the new schema through the watcher above.
+  const result = store.applyDbml(draftDbml.value)
+  parseStatus.value = result.success ? 'success' : 'error'
+  parseMessage.value = result.message
 }
 </script>
 
@@ -133,6 +152,7 @@ function handleApply() {
         <div class="code-area-wrapper">
           <pre
             v-if="!editing"
+            ref="previewEl"
             class="code-preview"
             :class="{ editable: isEditable }"
             tabindex="0"
@@ -289,6 +309,8 @@ function handleApply() {
 
 .code-area {
   flex: 1;
+  min-height: 0;
+  min-width: 0;
   width: 100%;
   resize: none;
   box-sizing: border-box;
@@ -311,9 +333,14 @@ function handleApply() {
 }
 
 /* Read-only highlighted view — same metrics as .code-area so focus/blur
-   swapping never shifts the layout; only the spans add color */
+   swapping never shifts the layout; only the spans add color.
+   min-height/min-width 0 lets the flex item shrink and scroll instead of
+   stretching the panel to full content height; pre-wrap mirrors the
+   textarea's soft wrapping so both lay out lines identically. */
 .code-preview {
   flex: 1;
+  min-height: 0;
+  min-width: 0;
   width: 100%;
   box-sizing: border-box;
   padding: 10px;
@@ -323,7 +350,8 @@ function handleApply() {
   line-height: 1.6;
   background: var(--c-canvas-bg);
   color: var(--c-field-name);
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
   tab-size: 2;
   overflow: auto;
   cursor: default;

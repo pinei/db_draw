@@ -82,9 +82,9 @@ A persistência é um middleware do Vite em `vite.config.ts`. Ela expõe `GET/PU
 
 ### Serialização
 `utils/codePlaceholder.ts` faz o mapeamento bidirecional parcial:
-- `generateDbml(schema)` → `Table ... { ... }` + `Ref: ...` (mapeia cardinalidade para operadores `<>`, `>`, `<`, `-`).
+- `generateDbml(schema)` → `Table ... { ... }` (só `[pk]`, sem `ref:` inline) + `Ref: From.col op To.col` (coluna FK real do lado muitos → PK do outro lado; cardinalidade vira operador `<>`, `>`, `<`, `-`). Sem `ref:` inline porque o binder rejeita refs duplicadas de mesmos endpoints (erro 5001) — o output próprio tem que passar no Apply.
 - `generateMermaid(schema)` → `erDiagram`.
-Nota: importar DBML **de volta** para o schema ainda não está totalmente implementado — `validateDbml` só valida o texto, não aplica no estado.
+- Import DBML→diagrama (`utils/dbmlImport.ts` + `applyDbml` na store, Apply em 1 passo): `compileDbml` valida e normaliza refs (explícitas via regex da linha `Ref:` com label do comentário + inline `inline_refs` do AST; 5002 autoref sintetizada, resto bloqueia); `buildDbmlPatch` casa por nome exato e preserva ids (logo posições e overrides), cardinalidades default `>`→ONE_OR_MANY→ONE / `<`→ONE→ONE_OR_MANY / `<>`→ambos MANY / `-`→ambos ONE (casadas mantêm opcionalidade), FK órfã vira campo comum, ordem espelha o bloco `Table`, entidades novas ao lado dos vizinhos ou no 1º slot livre. Resumo `+criadas −removidas ~alteradas` + ignorados.
 
 ### Validação de DBML
 `validateDbml` em `utils/persist.ts` usa `@dbml/parse` (`Compiler` + `MemoryProjectLayout` + `Filepath`). Ver `DBML_PARSE_*.md` (4 arquivos na raiz) para referência completa da API do `@dbml/parse`.

@@ -1,13 +1,35 @@
-import type { ErSchema, ErField, ErRelationship, Cardinality, LogicalCardinality } from '../model/types'
+import type { ErSchema, ErEntity, ErField, ErRelationship, Cardinality, LogicalCardinality } from '../model/types'
 
 // ─── DBML serializer ─────────────────────────────────────────────────────────
+// FKs are expressed ONLY as explicit Ref: lines (never as inline [ref: ...]):
+// the binder rejects duplicate same-endpoint refs (code 5001), so emitting
+// both would make our own output fail validation.
 
 function dbmlFieldLine(f: ErField): string {
-  const flags: string[] = []
-  if (f.isPK) flags.push('pk')
-  if (f.isFK && f.referencedEntityId) flags.push(`ref: > ${f.referencedEntityId}.id`)
-  const annotation = flags.length ? ` [${flags.join(', ')}]` : ''
+  const annotation = f.isPK ? ' [pk]' : ''
   return `  ${f.name} ${f.type}${annotation}`
+}
+
+function pkFieldName(entity: ErEntity): string {
+  return entity.fields.find((f) => f.isPK)?.name ?? 'id'
+}
+
+function relToDbml(rel: ErRelationship, schema: ErSchema): string | null {
+  const fromEntity = schema.entities.find((e) => e.id === rel.fromEntityId)
+  const toEntity   = schema.entities.find((e) => e.id === rel.toEntityId)
+  if (!fromEntity || !toEntity) return null
+  // The FK column lives on the many side: prefer a TO field pointing back at
+  // FROM, else a FROM field pointing at TO (self-loops hit the first branch,
+  // since both sides are the same entity)
+  const fkOnTo = toEntity.fields.find((f) => f.isFK && f.referencedEntityId === fromEntity.id)
+  const fkOnFrom = !fkOnTo
+    ? fromEntity.fields.find((f) => f.isFK && f.referencedEntityId === toEntity.id)
+    : undefined
+  const fromCol = fkOnTo ? pkFieldName(fromEntity) : (fkOnFrom?.name ?? 'id')
+  const toCol = fkOnTo ? fkOnTo.name : pkFieldName(toEntity)
+  const op = cardinalityToDbmlOp(rel.fromCardinality, rel.toCardinality)
+  const comment = rel.label ? ` // ${rel.label}` : ''
+  return `Ref: ${fromEntity.name}.${fromCol} ${op} ${toEntity.name}.${toCol}${comment}`
 }
 
 export function generateDbml(schema: ErSchema): string {
@@ -17,14 +39,7 @@ export function generateDbml(schema: ErSchema): string {
   })
 
   const refs = schema.relationships
-    .map((rel) => {
-      const fromEntity = schema.entities.find((e) => e.id === rel.fromEntityId)
-      const toEntity   = schema.entities.find((e) => e.id === rel.toEntityId)
-      if (!fromEntity || !toEntity) return null
-      const op = cardinalityToDbmlOp(rel.fromCardinality, rel.toCardinality)
-      const comment = rel.label ? ` // ${rel.label}` : ''
-      return `Ref: ${fromEntity.name}.id ${op} ${toEntity.name}.id${comment}`
-    })
+    .map((rel) => relToDbml(rel, schema))
     .filter(Boolean)
 
   return [...tables, '', ...refs].join('\n')

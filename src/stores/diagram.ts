@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import type { DiagramState, PersistedDiagramState, ConnectorStyle, NotationStyle, CodeFormat, ThemeMode, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel } from '../model/types'
 import { bibliotecaSchema } from '../model/sampleData'
 import { saveModel, AuthError } from '../utils/persist'
+import { compileDbml, buildDbmlPatch } from '../utils/dbmlImport'
 import { useAuthStore } from './auth'
 
 // Entity card dimensions used for initial layout
@@ -14,6 +15,53 @@ function estimateHeight(entityId: string): number {
   const entity = bibliotecaSchema.entities.find((e) => e.id === entityId)
   if (!entity) return 120
   return HEADER_HEIGHT + entity.fields.length * FIELD_HEIGHT + 8
+}
+
+function rectsOverlap(a: EntityRect, b: EntityRect, pad: number): boolean {
+  return (
+    a.x < b.x + b.width + pad && b.x < a.x + a.width + pad &&
+    a.y < b.y + b.height + pad && b.y < a.y + a.height + pad
+  )
+}
+
+// Placement for entities created by a DBML import: beside the centroid of
+// already-placed neighbors if any, else the first free grid slot. Existing
+// positions are never moved — positions is read live so sequential placements
+// in one import don't stack on each other.
+function placeImportedRect(
+  fieldCount: number,
+  neighborRects: EntityRect[],
+  positions: Record<string, EntityRect>,
+): EntityRect {
+  const width = ENTITY_WIDTH
+  const height = HEADER_HEIGHT + fieldCount * FIELD_HEIGHT + 8
+  const fits = (x: number, y: number) =>
+    !Object.values(positions).some((e) => rectsOverlap({ x, y, width, height }, e, 40))
+
+  if (neighborRects.length > 0) {
+    const cx = neighborRects.reduce((s, r) => s + r.x + r.width / 2, 0) / neighborRects.length
+    const cy = neighborRects.reduce((s, r) => s + r.y + r.height / 2, 0) / neighborRects.length
+    const spots: Array<[number, number]> = [
+      [cx + 40, cy - height / 2], // right of the group
+      [cx - width / 2, cy + 120], // below the group
+      [cx - width - 40, cy - height / 2], // left of the group
+    ]
+    for (const [x, y] of spots) {
+      const rx = Math.round(x)
+      const ry = Math.round(y)
+      if (fits(rx, ry)) return { x: rx, y: ry, width, height }
+    }
+  }
+  for (let row = 0; row < 20; row++) {
+    for (let col = 0; col < 4; col++) {
+      const x = 80 + col * (ENTITY_WIDTH + 80)
+      const y = 80 + row * 260
+      if (fits(x, y)) return { x, y, width, height }
+    }
+  }
+  const maxX = Math.max(0, ...Object.values(positions).map((e) => e.x + e.width))
+  const maxY = Math.max(0, ...Object.values(positions).map((e) => e.y + e.height))
+  return { x: maxX + 100, y: maxY + 100, width, height }
 }
 
 // Simple grid layout for the initial positions
@@ -187,6 +235,38 @@ export const useDiagramStore = defineStore('diagram', () => {
     draggingLabel.value = null
   }
 
+  // DBML Apply: incremental sync — matched entities/relationships keep their
+  // ids (hence positions and connector/label overrides); only the diff moves.
+  // Single mutation: all or nothing, one auto-save.
+  function applyDbml(text: string): { success: boolean; message: string } {
+    const compiled = compileDbml(text)
+    if (!compiled.ok) return { success: false, message: compiled.message }
+    const patch = buildDbmlPatch(state.value.schema, compiled.value)
+
+    const positions: Record<string, EntityRect> = { ...state.value.entityPositions }
+    for (const id of patch.removedEntityIds) delete positions[id]
+    for (const id of patch.createdEntityIds) {
+      const entity = patch.schema.entities.find((e) => e.id === id)
+      const neighborRects = (patch.neighbors[id] ?? [])
+        .map((n) => positions[n])
+        .filter((r): r is EntityRect => !!r)
+      positions[id] = placeImportedRect(entity?.fields.length ?? 0, neighborRects, positions)
+    }
+
+    const connectorPoints = { ...state.value.connectorPoints }
+    const labelPositions = { ...state.value.labelPositions }
+    for (const id of patch.removedRelIds) {
+      delete connectorPoints[id]
+      delete labelPositions[id]
+    }
+
+    state.value.schema = patch.schema
+    state.value.entityPositions = positions
+    state.value.connectorPoints = connectorPoints
+    state.value.labelPositions = labelPositions
+    return { success: true, message: patch.summary }
+  }
+
   function loadState(loaded: PersistedDiagramState) {
     // UI preferences are not part of the diagram artifact — merge them back
     // from the in-memory defaults so a fresh load starts with sane UI state
@@ -271,5 +351,6 @@ export const useDiagramStore = defineStore('diagram', () => {
     endDraggingLabel,
     saveStatus,
     loadState,
+    applyDbml,
   }
 })

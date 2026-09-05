@@ -1,6 +1,6 @@
 import type { DiagramState, PersistedDiagramState } from '../model/types'
 import { generateDbml, generateMermaid } from './codePlaceholder'
-import { Compiler, MemoryProjectLayout, Filepath } from '@dbml/parse'
+import { compileDbml } from './dbmlImport'
 import { useAuthStore } from '../stores/auth'
 
 const BASE = '/api/models'
@@ -54,26 +54,17 @@ export async function loginRequest(email: string, token: string): Promise<string
   return data.email
 }
 
+// Validation summary for the Apply button — single compile path shared with
+// the import (compileDbml); the actual diagram patch happens in the store.
 export function validateDbml(text: string): { success: boolean; message: string } {
   try {
-    const project = new MemoryProjectLayout()
-    const filepath = Filepath.from('schema.dbml')
-    project.setSource(filepath, text)
-    
-    const compiler = new Compiler(project)
-    const result = compiler.interpretFile(filepath)
-    
-    const errors = result.getErrors()
-    if (errors.length > 0) {
-      const errorMessages = errors
-        .map(e => `${e.message} (${e.line}:${e.column})`)
-        .join('; ')
-      return { success: false, message: `✗ Erro: ${errorMessages}` }
-    }
-    
-    return { success: true, message: '✓ DBML válido — pronto para aplicar' }
-  } catch (err: any) {
-    return { success: false, message: `✗ Erro: ${err.message}` }
+    const compiled = compileDbml(text)
+    if (!compiled.ok) return { success: false, message: compiled.message }
+    const { tables, refs } = compiled.value
+    const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
+    return { success: true, message: `✓ DBML válido — ${tables.length} ${plural(tables.length, 'tabela', 'tabelas')}, ${refs.length} ${plural(refs.length, 'relação', 'relações')}` }
+  } catch (err: unknown) {
+    return { success: false, message: `✗ Erro: ${err instanceof Error ? err.message : String(err)}` }
   }
 }
 
