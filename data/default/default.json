@@ -446,7 +446,8 @@
     },
     "canvasScale": 1.1600000000000001,
     "codeFormat": "dbml",
-    "codePanelOpen": true
+    "codePanelOpen": true,
+    "theme": "system"
   },
   "connectorPoints": {
     "rel_emprestimo_multa": {

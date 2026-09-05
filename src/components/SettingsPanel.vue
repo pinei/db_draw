@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
-import type { ConnectorStyle, NotationStyle } from '../model/types'
+import type { ConnectorStyle, NotationStyle, ThemeMode } from '../model/types'
 
 const store = useDiagramStore()
 const layout = computed(() => store.layout)
@@ -15,6 +15,12 @@ const notationOptions: { value: NotationStyle; label: string }[] = [
   { value: 'crowsfoot', label: "Crow's Foot" },
   { value: 'arrow',     label: 'Arrow' },
   { value: 'uml',       label: 'UML' },
+]
+
+const themeOptions: { value: ThemeMode; label: string }[] = [
+  { value: 'light',  label: 'Light'  },
+  { value: 'dark',   label: 'Dark'   },
+  { value: 'system', label: 'System' },
 ]
 </script>
 
@@ -44,6 +50,21 @@ const notationOptions: { value: NotationStyle; label: string }[] = [
           class="btn"
           :class="{ active: layout.notationStyle === opt.value }"
           @click="store.setNotationStyle(opt.value)"
+        >{{ opt.label }}</button>
+      </div>
+    </div>
+
+    <div class="divider" />
+
+    <div class="panel-section">
+      <span class="section-label">Theme</span>
+      <div class="btn-group">
+        <button
+          v-for="opt in themeOptions"
+          :key="opt.value"
+          class="btn"
+          :class="{ active: layout.theme === opt.value }"
+          @click="store.setTheme(opt.value)"
         >{{ opt.label }}</button>
       </div>
     </div>

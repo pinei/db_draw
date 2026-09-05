@@ -36,6 +36,7 @@ export interface ErSchema {
 export type ConnectorStyle = 'curved' | 'orthogonal'
 export type NotationStyle = 'crowsfoot' | 'arrow' | 'uml'
 export type CodeFormat = 'dbml' | 'mermaid'
+export type ThemeMode = 'light' | 'dark' | 'system'
 
 export interface DiagramLayout {
   connectorStyle: ConnectorStyle
@@ -44,6 +45,7 @@ export interface DiagramLayout {
   canvasScale: number
   codeFormat: CodeFormat
   codePanelOpen: boolean
+  theme: ThemeMode
 }
 
 // ─── Connector Point Customization ───────────────────────────────────────────

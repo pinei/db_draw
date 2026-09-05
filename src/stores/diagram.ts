@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { DiagramState, ConnectorStyle, NotationStyle, CodeFormat, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel } from '../model/types'
+import type { DiagramState, ConnectorStyle, NotationStyle, CodeFormat, ThemeMode, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel } from '../model/types'
 import { bibliotecaSchema } from '../model/sampleData'
 import { saveModel } from '../utils/persist'
 
@@ -53,6 +53,7 @@ export const useDiagramStore = defineStore('diagram', () => {
       canvasScale: 1,
       codeFormat: 'dbml',
       codePanelOpen: true,
+      theme: 'system',
     },
     connectorPoints: {},
     labelPositions: {},
@@ -126,6 +127,10 @@ export const useDiagramStore = defineStore('diagram', () => {
 
   function toggleCodePanel() {
     state.value.layout.codePanelOpen = !state.value.layout.codePanelOpen
+  }
+
+  function setTheme(theme: ThemeMode) {
+    state.value.layout.theme = theme
   }
 
   function setHoveredConnector(id: string) {
@@ -221,6 +226,7 @@ export const useDiagramStore = defineStore('diagram', () => {
     setCanvasScale,
     setCodeFormat,
     toggleCodePanel,
+    setTheme,
     hoveredConnectorId,
     setHoveredConnector,
     clearHoveredConnector,
