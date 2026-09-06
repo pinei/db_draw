@@ -37,24 +37,52 @@ docker compose up -d --build
 https://dash.cloudflare.com/
 
 
-- SSL/TLS → Origin Server (às vezes em SSL/TLS → Origin Certificates)
-Create Certificate
-Deixe:
-Private key type: RSA (2048)
-Hostnames: dbdraw.io e www.dbdraw.io (já costumam vir)
-Validity: 15 years (o padrão)
-Create
-A tela mostra dois blocos de texto:
+- SSL/TLS → Origin Server > Create Certificate
+    - Private key type: RSA (2048)
+    - Hostnames: dbdraw.io e *.dbdraw.io
+    - Validity: 15 years (o padrão)
 
-Bloco	Vai para
-Origin Certificate (-----BEGIN CERTIFICATE-----)
-origin.pem
-Private Key (-----BEGIN PRIVATE KEY-----)
-origin.key
+São gerados dois blocos de texto:
+- origin.pem
+- origin.key
 
+Configurar no Caddy
+
+```
+sudo mkdir -p /etc/caddy/certs
+sudo nano /etc/caddy/certs/origin.pem   # cola o certificado
+sudo nano /etc/caddy/certs/origin.key   # cola a private key
+
+sudo chown root:caddy /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+sudo chmod 644 /etc/caddy/certs/origin.pem
+sudo chmod 640 /etc/caddy/certs/origin.key
+
+sudo chown root:caddy /etc/caddy/certs
+sudo chmod 750 /etc/caddy/certs
+```
+
+Configurar o Caddyfile (conteudo no `Caddyfile` do projeto)
+
+```
+nano /etc/caddy/Caddyfile 
+```
+
+Conferir e recarregar
+
+```
+sudo caddy validate --config /etc/caddy/Caddyfile
+
+sudo systemctl reload caddy
+sudo systemctl status caddy --no-pager
+```
 
 ## SEO
 
 Quando o site estiver no ar, envie `https://www.dbdraw.io/sitemap.xml` no [Google Search Console](https://search.google.com/search-console) e no Bing Webmaster. Como é um SPA, o que os buscadores catalogam de imediato são as meta tags e o HTML estático — não o canvas depois do login.
 
 
+## Resend
+
+Serviço de envio de email configurado no DNS do serviço da Cloudflare.
+
+https://resend.com/emails
