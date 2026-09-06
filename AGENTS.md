@@ -16,6 +16,7 @@ npm run dev          # sobe o dev server (Vite + API Express em /api)
 npm run build        # typecheck (vue-tsc) + build de produção
 npm start            # serve dist/ + /api (Express). Requer npm run build
 npm run preview      # só o build estático (sem API)
+# Docker (VPS): docker compose up -d --build
 ```
 
 Não há lint nem teste automatizado configurado. O typecheck é feito pelo `vue-tsc` dentro de `npm run build`. É importante rodar `npm run build` após alterações para validar tipos.

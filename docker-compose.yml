@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    image: dbdraw
+    container_name: dbdraw
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # .env uses HOST=127.0.0.1 for bare-metal npm start; Docker needs all interfaces
+      HOST: "0.0.0.0"
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - dbdraw-data:/app/data
+
+volumes:
+  dbdraw-data:

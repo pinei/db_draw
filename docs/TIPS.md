@@ -26,7 +26,35 @@ Atrás do Cloudflare (proxy laranja, SSL Full strict): Caddy termina TLS com Ori
 npm run build && npm start   # Express em 127.0.0.1:3000
 ```
 
+Imagem Docker (Node + `dist` + `/api`). Variáveis iguais ao `.env` (`RESEND_API_KEY`, `MAIL_FROM`, `SITE_URL`, `PORT`). No container use `HOST=0.0.0.0` (o `.env` local usa `127.0.0.1`).
+
+```bash
+docker compose up -d --build
+```
+
+## Configuração Cloudfare
+
+https://dash.cloudflare.com/
+
+
+- SSL/TLS → Origin Server (às vezes em SSL/TLS → Origin Certificates)
+Create Certificate
+Deixe:
+Private key type: RSA (2048)
+Hostnames: dbdraw.io e www.dbdraw.io (já costumam vir)
+Validity: 15 years (o padrão)
+Create
+A tela mostra dois blocos de texto:
+
+Bloco	Vai para
+Origin Certificate (-----BEGIN CERTIFICATE-----)
+origin.pem
+Private Key (-----BEGIN PRIVATE KEY-----)
+origin.key
+
+
 ## SEO
 
 Quando o site estiver no ar, envie `https://www.dbdraw.io/sitemap.xml` no [Google Search Console](https://search.google.com/search-console) e no Bing Webmaster. Como é um SPA, o que os buscadores catalogam de imediato são as meta tags e o HTML estático — não o canvas depois do login.
+
 
