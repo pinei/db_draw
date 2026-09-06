@@ -1,0 +1,25 @@
+{
+  "name": "DBDraw",
+  "short_name": "DBDraw",
+  "description": "Visual entity-relationship diagram editor in the browser. Export and import DBML and Mermaid.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f0f2f5",
+  "theme_color": "#1e3a5f",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "520x520",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,13 +1,69 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DBDraw</title>
+    <title>DBDraw — Visual ER Diagram Editor</title>
+    <meta name="description" content="Draw entity-relationship diagrams in the browser. Switch Crow's Foot, Min-Max or Barker notation, and export or import your schema as DBML or Mermaid." />
+    <meta name="keywords" content="ER diagram, entity relationship, database modeling, DBML, Mermaid, Crow's Foot, Barker, schema editor, DBDraw" />
+    <meta name="author" content="DBDraw" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#1e3a5f" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="canonical" href="https://www.dbdraw.io/" />
+
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="DBDraw" />
+    <meta property="og:title" content="DBDraw — Visual ER Diagram Editor" />
+    <meta property="og:description" content="Draw entity-relationship diagrams in the browser. Export and import DBML and Mermaid." />
+    <meta property="og:url" content="https://www.dbdraw.io/" />
+    <meta property="og:image" content="https://www.dbdraw.io/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="DBDraw logo — visual ER diagram editor" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="DBDraw — Visual ER Diagram Editor" />
+    <meta name="twitter:description" content="Draw entity-relationship diagrams in the browser. Export and import DBML and Mermaid." />
+    <meta name="twitter:image" content="https://www.dbdraw.io/og-image.png" />
+    <meta name="twitter:image:alt" content="DBDraw logo — visual ER diagram editor" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "DBDraw",
+        "alternateName": "Database Draw",
+        "url": "https://www.dbdraw.io/",
+        "description": "Visual entity-relationship diagram editor in the browser. Draw entities and relationships, switch notation, and export or import DBML and Mermaid.",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Web",
+        "browserRequirements": "Requires JavaScript",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "screenshot": "https://www.dbdraw.io/og-image.png",
+        "image": "https://www.dbdraw.io/logo.png"
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>
+    <noscript>
+      <main>
+        <h1>DBDraw</h1>
+        <p>Visual entity-relationship diagram editor in the browser. Draw entities and relationships, switch Crow's Foot, Min-Max or Barker notation, and export or import your schema as DBML or Mermaid.</p>
+        <p><a href="https://www.dbdraw.io/">www.dbdraw.io</a></p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
