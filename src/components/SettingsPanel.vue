@@ -101,9 +101,6 @@ const themeOptions: { value: ThemeMode; label: string }[] = [
 
 <style scoped>
 .settings-panel {
-  position: absolute;
-  top: 16px;
-  right: 16px;
   background: var(--c-panel-bg);
   border: 1px solid var(--c-panel-border);
   border-radius: 10px;
@@ -112,9 +109,7 @@ const themeOptions: { value: ThemeMode; label: string }[] = [
   flex-direction: column;
   gap: 10px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-  z-index: 100;
   user-select: none;
-  min-width: 180px;
 }
 
 .panel-section {

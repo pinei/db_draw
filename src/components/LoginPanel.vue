@@ -4,8 +4,8 @@ import { useAuthStore } from '../stores/auth'
 import AppLogo from './AppLogo.vue'
 
 const auth = useAuthStore()
-const email = ref(auth.email ?? '')
-const token = ref('')
+const email = ref(auth.loginDraft?.email || auth.email || '')
+const token = ref(auth.loginDraft?.token ?? '')
 const busy = ref(false)
 const message = ref('')
 const messageKind = ref<'info' | 'error'>('info')
@@ -51,7 +51,7 @@ async function handleGenerate() {
   <div class="login-root">
     <div class="login-card">
       <AppLogo class="login-logo" />
-      <div class="login-subtitle">Sign in with email and token</div>
+      <div class="login-subtitle">Sign in with email and token, or generate a new token by email</div>
 
       <label class="login-field">
         <span>Email</span>

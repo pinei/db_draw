@@ -2,3 +2,6 @@ node_modules
 dist
 .DS_Store
 data/user/
+.env
+.env.local
+.env.*.local

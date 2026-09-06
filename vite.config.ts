@@ -1,10 +1,11 @@
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs'
 import { join, dirname, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { logoFilePath, resolveSiteUrl, sendTokenEmail, type TokenMailEnv } from './server/tokenEmail'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = join(__dirname, 'data')
@@ -107,7 +108,7 @@ function authenticate(email: string, token: string): string | null {
   }
 }
 
-function authPlugin(): Plugin {
+function authPlugin(env: TokenMailEnv): Plugin {
   return {
     name: 'auth',
     configureServer(server) {
@@ -130,11 +131,33 @@ function authPlugin(): Plugin {
           if (!isInsideDataDir(dir)) { sendJson(res, 400, { error: 'invalid email' }); return }
           const token = randomBytes(32).toString('hex')
           mkdirSync(join(dir, 'models'), { recursive: true })
-          const record: UserRecord = { email: parsed.email, token, createdAt: new Date().toISOString() }
-          writeFileSync(join(dir, 'user.json'), JSON.stringify(record, null, 2), 'utf-8')
-          // Dev phase: no email delivery — token goes to the server stdout
-          console.log(`[auth] token for ${parsed.email}: ${token}`)
-          sendJson(res, 200, { message: 'Token generated — check the dev server console (npm run dev)' })
+          const file = join(dir, 'user.json')
+          let existing: Partial<UserRecord> = {}
+          if (existsSync(file)) {
+            try { existing = JSON.parse(readFileSync(file, 'utf-8')) as UserRecord } catch { /* replace */ }
+          }
+          const record: UserRecord = {
+            ...existing,
+            email: parsed.email,
+            token,
+            createdAt: existing.createdAt ?? new Date().toISOString(),
+          }
+          writeFileSync(file, JSON.stringify(record, null, 2), 'utf-8')
+          const host = typeof req.headers.host === 'string' ? req.headers.host : undefined
+          const mailed = await sendTokenEmail({
+            env,
+            to: parsed.email,
+            token,
+            siteUrl: resolveSiteUrl(env, host),
+            logoPath: logoFilePath(__dirname),
+          })
+          if (!mailed.ok) {
+            console.error(`[auth] token email failed for ${parsed.email}: ${mailed.message}`)
+            sendJson(res, 502, { error: mailed.message })
+            return
+          }
+          console.log(`[auth] token email sent to ${parsed.email}`)
+          sendJson(res, 200, { message: 'Token sent — check your email to sign in' })
           return
         }
 
@@ -253,6 +276,9 @@ function persistencePlugin(): Plugin {
   }
 }
 
-export default defineConfig({
-  plugins: [vue(), authPlugin(), persistencePlugin()],
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, __dirname, '')
+  return {
+    plugins: [vue(), authPlugin(env), persistencePlugin()],
+  }
 })

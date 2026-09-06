@@ -14,9 +14,16 @@ export const useAuthStore = defineStore('auth', () => {
   // store's remembered id covers reloads in the same browser)
   const lastModelId = ref<string | null>(null)
 
+  // Prefill for the login form after a failed magic-link attempt
+  const loginDraft = ref<{ email: string; token: string } | null>(null)
+
   const isAuthenticated = computed(() => !!email.value && !!token.value)
 
-  /** Asks the server to (re)generate a token for the email (dev: check server stdout). */
+  function setLoginDraft(next: { email: string; token: string } | null) {
+    loginDraft.value = next
+  }
+
+  /** Asks the server to (re)generate a token and email it to the user. */
   async function generateToken(inputEmail: string): Promise<string> {
     return fetchToken(inputEmail.trim())
   }
@@ -38,5 +45,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem(TOKEN_KEY)
   }
 
-  return { email, token, isAuthenticated, lastModelId, generateToken, login, logout }
+  return { email, token, isAuthenticated, lastModelId, loginDraft, setLoginDraft, generateToken, login, logout }
 })

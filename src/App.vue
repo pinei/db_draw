@@ -5,6 +5,7 @@ import { useAuthStore } from './stores/auth'
 import { loadModel, saveModel, AuthError } from './utils/persist'
 import DiagramCanvas from './components/DiagramCanvas.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
+import SupportKofi from './components/SupportKofi.vue'
 import CodePanel from './components/CodePanel.vue'
 import ModelBar from './components/ModelBar.vue'
 import LoginPanel from './components/LoginPanel.vue'
@@ -63,7 +64,35 @@ async function initModel() {
   }
 }
 
-onMounted(() => {
+function takeMagicLink(): { email: string; token: string } | null {
+  const params = new URLSearchParams(window.location.search)
+  const email = params.get('email')?.trim() ?? ''
+  const token = params.get('token')?.trim() ?? ''
+  if (!email && !token) return null
+  const url = new URL(window.location.href)
+  url.searchParams.delete('email')
+  url.searchParams.delete('token')
+  const next = url.pathname + url.search + url.hash
+  history.replaceState({}, document.title, next)
+  if (!email || !token) return null
+  return { email, token }
+}
+
+onMounted(async () => {
+  const magic = takeMagicLink()
+  if (magic) {
+    const previousEmail = auth.email
+    try {
+      await auth.login(magic.email, magic.token)
+      auth.setLoginDraft(null)
+      if (previousEmail && previousEmail !== magic.email) {
+        initialized = false
+        store.resetState()
+      }
+    } catch {
+      auth.setLoginDraft(magic)
+    }
+  }
   if (auth.isAuthenticated) {
     initialized = true
     initModel()
@@ -89,7 +118,10 @@ watch(() => auth.isAuthenticated, (ok) => {
   <div v-else class="app-root">
     <DiagramCanvas />
     <CodePanel />
-    <SettingsPanel />
+    <div class="settings-stack">
+      <SupportKofi />
+      <SettingsPanel />
+    </div>
     <ModelBar />
   </div>
 </template>
@@ -100,5 +132,17 @@ watch(() => auth.isAuthenticated, (ok) => {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
+}
+
+.settings-stack {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 180px;
 }
 </style>

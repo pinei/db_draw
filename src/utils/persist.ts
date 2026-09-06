@@ -34,7 +34,7 @@ export async function requestToken(email: string): Promise<string> {
   }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `Failed to generate token: ${res.status}`)
-  return typeof data.message === 'string' ? data.message : 'Token generated'
+  return typeof data.message === 'string' ? data.message : 'Token sent — check your email'
 }
 
 export interface LoginResult {

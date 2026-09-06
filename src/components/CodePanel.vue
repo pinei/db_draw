@@ -149,6 +149,19 @@ function handleApply() {
           </div>
         </div>
 
+        <a
+          v-if="layout.codeFormat === 'dbml'"
+          class="docs-link"
+          href="https://dbml.dbdiagram.io/docs/"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Open DBML syntax documentation"
+          @click.stop
+        >
+          <span class="docs-icon" aria-hidden="true">?</span>
+          DBML Syntax
+        </a>
+
         <div class="code-area-wrapper">
           <pre
             v-if="!editing"
@@ -270,6 +283,35 @@ function handleApply() {
 .btn-group {
   display: flex;
   gap: 4px;
+}
+
+.docs-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--c-panel-label);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.docs-link:hover {
+  color: var(--c-entity-border-hover);
+}
+
+.docs-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .btn {
