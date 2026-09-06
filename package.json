@@ -6,17 +6,21 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "tsx server/prod.ts"
   },
   "dependencies": {
     "@dbml/parse": "^10.1.1",
+    "express": "^5.2.1",
     "pinia": "^2.2.0",
     "resend": "^6.26.0",
     "vue": "^3.5.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^26.4.1",
     "@vitejs/plugin-vue": "^5.1.0",
+    "tsx": "^4.23.13",
     "typescript": "~5.5.0",
     "vite": "^5.4.0",
     "vue-tsc": "^2.1.0"

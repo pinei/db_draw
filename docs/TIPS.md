@@ -16,6 +16,16 @@ Regras:
 - Recursos sem contraparte (enum, unique, default, notes…): conta avisos no resumo (ex: "3 constraints ignoradas")
 - Mermaid: continua read-only (fora de escopo)
 
+## Deploy (Caddy + Cloudflare)
+
+Para um único app na VPS, Caddy é melhor que Nginx: um `Caddyfile` (`deploy/Caddyfile`), `reverse_proxy` trivial, e HTTPS automático se o origin estiver exposto. Nginx só vale se a VPS já for um farm de sites com configs prontas.
+
+Atrás do Cloudflare (proxy laranja, SSL Full strict): Caddy termina TLS com Origin Certificate. Sem Cloudflare: omita `tls` e o Caddy emite Let's Encrypt. Com Cloudflare Tunnel, Caddy é opcional — o `cloudflared` pode apontar direto para `127.0.0.1:3000`.
+
+```bash
+npm run build && npm start   # Express em 127.0.0.1:3000
+```
+
 ## SEO
 
 Quando o site estiver no ar, envie `https://www.dbdraw.io/sitemap.xml` no [Google Search Console](https://search.google.com/search-console) e no Bing Webmaster. Como é um SPA, o que os buscadores catalogam de imediato são as meta tags e o HTML estático — não o canvas depois do login.

@@ -6,15 +6,16 @@ Guia para agentes de IA (e humanos) que trabalham neste repositório.
 
 `db_draw` (npm name: `db-diagram`) é um editor visual de diagramas ER (entidade-relacionamento) no navegador. Ele desenha entidades/relações em um canvas SVG, permite arrastar/redimensionar cards, editar pontos de conexão, trocar notação e exportar/importar o schema em DBML ou Mermaid.
 
-Stack: Vue 3 (`<script setup>`) + Vite + Pinia + TypeScript + SVG (sem libs de grafo).
+Stack: Vue 3 (`<script setup>`) + Vite + Pinia + TypeScript + SVG (sem libs de grafo). Produção: Express (`server/`) atrás de Caddy + Cloudflare.
 
 ## Comandos
 
 ```bash
 npm install          # instala dependências
-npm run dev          # sobe o dev server (Vite) — necessário para persistência
+npm run dev          # sobe o dev server (Vite + API Express em /api)
 npm run build        # typecheck (vue-tsc) + build de produção
-npm run preview      # serve o build de produção
+npm start            # serve dist/ + /api (Express). Requer npm run build
+npm run preview      # só o build estático (sem API)
 ```
 
 Não há lint nem teste automatizado configurado. O typecheck é feito pelo `vue-tsc` dentro de `npm run build`. É importante rodar `npm run build` após alterações para validar tipos.
@@ -47,7 +48,13 @@ src/
     ModelBar.vue              # pílula /id + nome + botão 🗂 (popover ModelManager)
     ModelManager.vue          # popover: lista modelos (id+meta), abre (flush antes) e cria (blank)
     LoginPanel.vue            # tela de login (e-mail + token, gerar token)
-  vite.config.ts              # plugins de auth (/api/auth) e persistência (/api/models) em middleware do dev server
+server/
+  app.ts                      # Express: /api/auth + /api/models (Vite e produção)
+  store.ts                    # filesystem de user.json e modelos
+  tokenEmail.ts               # e-mail de token via Resend
+  prod.ts                     # npm start — estáticos + API em 127.0.0.1:3000
+deploy/Caddyfile              # reverse proxy Caddy → Express
+vite.config.ts                # monta o router Express em /api no dev server
 data/
   user/<dominio>/<nome>/      # NÃO versionado (ver .gitignore)
     user.json                 # { email, token, createdAt, lastLoginAt, lastLoginIp, lastLoginUserAgent, loginCount }
@@ -74,10 +81,10 @@ Regras importantes:
 ## Como as coisas funcionam
 
 ### Autenticação multiusuário (dev apenas)
-Login com e-mail + token via `LoginPanel.vue` (gate no `App.vue`; sessão em `localStorage`, store `auth.ts`). Logout chama `resetState()` da diagram store (estado é global e sem dono — sem isso o próximo login herdaria o diagrama em memória e o seed de 404 o persistiria na pasta do novo usuário). Seed de primeiro login usa `resetState()` + `saveModel` (defaults pristinos, nunca o estado corrente). Auto-save não dispara deslogado. Endpoints em `vite.config.ts`: `POST /api/auth/token {email}` (gera token, grava `user.json` preservando meta anterior, envia o token por e-mail via Resend — `RESEND_API_KEY` em `.env`) e `POST /api/auth/login {email, token}` (compara com `timingSafeEqual`). Link mágico `/?email=&token=` (no e-mail) faz login automático no `App.vue` e remove os params da URL. E-mail vira pasta `data/user/<dominio>/<nome>` (lowercase, validado contra path traversal). `GET/PUT /api/models/:name` exigem headers `X-User-Email`/`X-Auth-Token` e operam em `data/user/.../models/:name/`; `GET /api/models` (sem nome) lista `[{id, meta}]` (meta best-effort, null se ausente); 401 vira `AuthError` e desloga. Modelo atual = `currentModelId` na store (fora do artefato, lembrado em `localStorage`); trocar/criar faz `flushSave()` antes para não perder a janela do debounce. Tokens em plaintext, sem expiração. `user.json` guarda também `lastModelId` (atualizado a cada GET/PUT de modelo, best-effort); o login o devolve e o `App` abre esse modelo (hint do servidor vence o `localStorage`, que cobre só reloads).
+Login com e-mail + token via `LoginPanel.vue` (gate no `App.vue`; sessão em `localStorage`, store `auth.ts`). Logout chama `resetState()` da diagram store (estado é global e sem dono — sem isso o próximo login herdaria o diagrama em memória e o seed de 404 o persistiria na pasta do novo usuário). Seed de primeiro login usa `resetState()` + `saveModel` (defaults pristinos, nunca o estado corrente). Auto-save não dispara deslogado. Endpoints em `server/app.ts` (Vite monta o mesmo router; `npm start` serve `dist/` + API): `POST /api/auth/token {email}` (gera token, grava `user.json` preservando meta anterior, envia o token por e-mail via Resend — `RESEND_API_KEY` em `.env`) e `POST /api/auth/login {email, token}` (compara com `timingSafeEqual`). Link mágico `/?email=&token=` (no e-mail) faz login automático no `App.vue` e remove os params da URL. E-mail vira pasta `data/user/<dominio>/<nome>` (lowercase, validado contra path traversal). `GET/PUT /api/models/:name` exigem headers `X-User-Email`/`X-Auth-Token` e operam em `data/user/.../models/:name/`; `GET /api/models` (sem nome) lista `[{id, meta}]` (meta best-effort, null se ausente); 401 vira `AuthError` e desloga. Modelo atual = `currentModelId` na store (fora do artefato, lembrado em `localStorage`); trocar/criar faz `flushSave()` antes para não perder a janela do debounce. Tokens em plaintext, sem expiração. `user.json` guarda também `lastModelId` (atualizado a cada GET/PUT de modelo, best-effort); o login o devolve e o `App` abre esse modelo (hint do servidor vence o `localStorage`, que cobre só reloads).
 
 ### Persistência (dev apenas)
-A persistência é um middleware do Vite em `vite.config.ts`. Ela expõe `GET/PUT /api/models/:name` (autenticado, ver acima) e grava arquivos em `data/user/.../models/:name/` (`.json`, `.dbml`, `.mermaid`). Só funciona com `npm run dev`; fora disso o app roda em memória silenciosamente (`App.vue` usa try/catch). Primeiro login sem modelo → 404 → `App.vue` semeia do `sampleData` em memória.
+A persistência é o router Express em `server/app.ts` (`GET/PUT /api/models/:name`, autenticado) e grava em `data/user/.../models/:name/` (`.json`, `.dbml`, `.mermaid`). Em dev o Vite monta o mesmo router; em produção `npm start` serve `dist/` + API. Sem o servidor (`vite preview` ou arquivo estático) o app roda em memória silenciosamente (`App.vue` usa try/catch). Primeiro login sem modelo → 404 → `App.vue` semeia do `sampleData` em memória.
 
 `saveModel` (em `utils/persist.ts`) anexa os campos derivados `_dbml` e `_mermaid` como side-channel; `loadModel` os remove ao ler. O auto-save é debounced (1.5s) via `watch(..., { deep: true })` na store.
 

@@ -1,0 +1,13 @@
+# Caddy in front of the Express app (127.0.0.1:3000).
+# Behind Cloudflare: use Full (strict) + an Origin Certificate, then
+#   tls /etc/caddy/origin.pem /etc/caddy/origin.key
+# Without Cloudflare (VPS exposed): omit `tls` and Caddy issues Let's Encrypt.
+
+www.dbdraw.io {
+	encode gzip
+	reverse_proxy 127.0.0.1:3000
+}
+
+dbdraw.io {
+	redir https://www.dbdraw.io{uri} permanent
+}
