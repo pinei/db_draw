@@ -1,13 +1,18 @@
-# Caddy in front of the Express app (127.0.0.1:3000).
-# Behind Cloudflare: use Full (strict) + an Origin Certificate, then
-#   tls /etc/caddy/origin.pem /etc/caddy/origin.key
-# Without Cloudflare (VPS exposed): omit `tls` and Caddy issues Let's Encrypt.
+# Cloudflare (proxied / orange cloud) + Caddy on the VPS.
+#
+# Cloudflare SSL/TLS: Full (strict)
+# Origin cert: Dashboard → SSL/TLS → Origin Server → Create Certificate
+#   save as /etc/caddy/certs/origin.pem and origin.key (chmod 600)
+#
+# Without Cloudflare, comment the `tls` lines — Caddy will issue Let's Encrypt.
 
 www.dbdraw.io {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
 	encode gzip
 	reverse_proxy 127.0.0.1:3000
 }
 
 dbdraw.io {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
 	redir https://www.dbdraw.io{uri} permanent
 }
