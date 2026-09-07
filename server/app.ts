@@ -13,6 +13,7 @@ import {
   touchLastModel,
   userDir,
   writeUserRecord,
+  sanitizeCodePanelSize,
   type UserRecord,
 } from './store'
 import { logoFilePath, resolveSiteUrl, sendTokenEmail, type TokenMailEnv } from './tokenEmail'
@@ -86,6 +87,7 @@ export function createApiRouter(opts: AppOptions): Router {
     const dir = authenticate(dataDir, parsed.email, token)
     if (!dir) { res.status(401).json({ error: 'invalid credentials' }); return }
     let lastModelId = 'default'
+    let codePanelSize: { width: number; height: number } | null = null
     try {
       const record = readUserRecord(dir)
       if (record) {
@@ -96,12 +98,37 @@ export function createApiRouter(opts: AppOptions): Router {
         if (typeof record.lastModelId === 'string' && record.lastModelId) {
           lastModelId = record.lastModelId
         }
+        codePanelSize = sanitizeCodePanelSize(record.codePanelSize)
         writeUserRecord(dir, record)
       }
     } catch {
       // best effort — login already succeeded
     }
-    res.status(200).json({ email: parsed.email, lastModelId })
+    res.status(200).json({ email: parsed.email, lastModelId, codePanelSize })
+  })
+
+  router.get('/auth/prefs', (req, res) => {
+    const creds = credentials(req)
+    const home = creds ? authenticate(dataDir, creds.email, creds.token) : null
+    if (!home) { res.status(401).end(); return }
+    const record = readUserRecord(home)
+    res.status(200).json({
+      lastModelId: typeof record?.lastModelId === 'string' ? record.lastModelId : null,
+      codePanelSize: sanitizeCodePanelSize(record?.codePanelSize),
+    })
+  })
+
+  router.put('/auth/prefs', (req, res) => {
+    const creds = credentials(req)
+    const home = creds ? authenticate(dataDir, creds.email, creds.token) : null
+    if (!home) { res.status(401).end(); return }
+    const size = sanitizeCodePanelSize(req.body?.codePanelSize)
+    if (!size) { res.status(400).json({ error: 'invalid codePanelSize' }); return }
+    const record = readUserRecord(home)
+    if (!record) { res.status(401).end(); return }
+    record.codePanelSize = size
+    writeUserRecord(home, record)
+    res.status(204).end()
   })
 
   router.use('/models', (req, res, next) => {

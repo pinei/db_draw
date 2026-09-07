@@ -30,6 +30,9 @@ watch(() => store.layout.theme, applyTheme, { immediate: true })
 systemMedia.addEventListener('change', applyTheme)
 
 async function initModel() {
+  // Session from localStorage never ran login — pull prefs from user.json.
+  // Fresh login already filled auth; a second fetch is cheap and keeps sync.
+  await auth.restorePrefs()
   if (auth.lastModelId) store.setCurrentModelId(auth.lastModelId)
   else store.restoreCurrentModelId()
   const id = store.currentModelId

@@ -2,6 +2,11 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 
 import { join, relative, isAbsolute } from 'node:path'
 import { timingSafeEqual } from 'node:crypto'
 
+export interface CodePanelSize {
+  width: number
+  height: number
+}
+
 export interface UserRecord {
   email: string
   token: string
@@ -11,6 +16,21 @@ export interface UserRecord {
   lastLoginUserAgent?: string
   loginCount?: number
   lastModelId?: string
+  /** Last user-resized Diagram Code panel size (pixels). */
+  codePanelSize?: CodePanelSize
+}
+
+/** Clamp and validate a code-panel size from client/user.json. */
+export function sanitizeCodePanelSize(raw: unknown): CodePanelSize | null {
+  if (!raw || typeof raw !== 'object') return null
+  const rec = raw as Record<string, unknown>
+  const w = typeof rec.width === 'number' ? rec.width : Number(rec.width)
+  const h = typeof rec.height === 'number' ? rec.height : Number(rec.height)
+  if (!Number.isFinite(w) || !Number.isFinite(h)) return null
+  return {
+    width: Math.round(Math.min(2000, Math.max(220, w))),
+    height: Math.round(Math.min(2000, Math.max(80, h))),
+  }
 }
 
 export function parseEmail(input: unknown): { domain: string; username: string; email: string } | null {

@@ -1,21 +1,112 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
+import { useAuthStore } from '../stores/auth'
 import { generateDbml, generateMermaid } from '../utils/codePlaceholder'
 import { highlightDbml, highlightMermaid } from '../utils/dbmlHighlight'
 import type { CodeFormat } from '../model/types'
 
 const store = useDiagramStore()
+const auth = useAuthStore()
 const layout = computed(() => store.layout)
 const panelEl = ref<HTMLDivElement | null>(null)
 const textareaEl = ref<HTMLTextAreaElement | null>(null)
 
-// Clear inline height set by CSS resize so collapse always works
+// CSS resize writes inline width/height; collapse must clear them so the
+// header can shrink, but remember the last size and put it back on expand.
+const savedSize = ref<{ width: string; height: string } | null>(null)
+
+function applySizePx(width: number, height: number) {
+  const el = panelEl.value
+  if (!el) return
+  const w = `${Math.round(width)}px`
+  const h = `${Math.round(height)}px`
+  el.style.width = w
+  el.style.height = h
+  savedSize.value = { width: w, height: h }
+}
+
+function readSizePx(): { width: number; height: number } | null {
+  const el = panelEl.value
+  if (!el) return null
+  const width = el.offsetWidth
+  const height = el.offsetHeight
+  if (!width || !height) return null
+  return { width, height }
+}
+
+function persistCurrentSize() {
+  const size = readSizePx()
+  if (!size) return
+  const prev = auth.codePanelSize
+  if (prev && prev.width === size.width && prev.height === size.height) return
+  void auth.persistCodePanelSize(size)
+}
+
 watch(() => layout.value.codePanelOpen, (open) => {
-  if (!open && panelEl.value) {
-    panelEl.value.style.height = ''
-    panelEl.value.style.width = ''
+  const el = panelEl.value
+  if (!el) return
+  if (!open) {
+    const width = el.style.width || `${el.offsetWidth}px`
+    const height = el.style.height || `${el.offsetHeight}px`
+    savedSize.value = { width, height }
+    persistCurrentSize()
+    el.style.height = ''
+    el.style.width = ''
+    return
   }
+  const saved = savedSize.value
+  if (!saved) return
+  nextTick(() => {
+    if (!panelEl.value) return
+    panelEl.value.style.width = saved.width
+    panelEl.value.style.height = saved.height
+  })
+})
+
+watch(
+  () => auth.codePanelSize,
+  (size) => {
+    if (!size || !layout.value.codePanelOpen) return
+    applySizePx(size.width, size.height)
+  },
+)
+
+let resizeObserver: ResizeObserver | null = null
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+let observing = false
+
+function schedulePersist() {
+  if (!observing || !layout.value.codePanelOpen) return
+  if (persistTimer) clearTimeout(persistTimer)
+  persistTimer = setTimeout(() => {
+    persistTimer = null
+    persistCurrentSize()
+  }, 400)
+}
+
+onMounted(() => {
+  const el = panelEl.value
+  if (!el) return
+  const size = auth.codePanelSize
+  if (size && layout.value.codePanelOpen) {
+    applySizePx(size.width, size.height)
+  }
+  resizeObserver = new ResizeObserver(() => schedulePersist())
+  // Ignore the first layout pass (default / restored size) so we don't PUT
+  // before the user actually resizes
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      observing = true
+      resizeObserver?.observe(el)
+    })
+  })
+})
+
+onUnmounted(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  if (persistTimer) clearTimeout(persistTimer)
 })
 
 const formatOptions: { value: CodeFormat; label: string }[] = [
