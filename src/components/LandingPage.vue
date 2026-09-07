@@ -17,6 +17,8 @@ import DemoPreview from './DemoPreview.vue'
           <li>DBML</li>
           <li>Mermaid</li>
           <li>ER Notations</li>
+          <li>SVG</li>
+          <li>PNG</li>
         </ul>
       </header>
 
