@@ -178,7 +178,10 @@ async function exportDiagram(format: DiagramExportFormat) {
 
 .btn-group {
   display: flex;
-  gap: 4px;
+  overflow: hidden;
+  border: 1px solid var(--c-btn-border);
+  border-radius: 6px;
+  background: var(--c-btn-bg);
 }
 
 .export-error {
@@ -203,13 +206,18 @@ async function exportDiagram(format: DiagramExportFormat) {
   padding: 5px 8px;
   font-size: 11px;
   font-family: inherit;
-  border: 1px solid var(--c-btn-border);
-  border-radius: 5px;
-  background: var(--c-btn-bg);
+  border: none;
+  border-right: 1px solid var(--c-btn-border);
+  border-radius: 0;
+  background: transparent;
   color: var(--c-btn-fg);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
   white-space: nowrap;
+}
+
+.btn:last-child {
+  border-right: none;
 }
 
 .btn:hover:not(:disabled) {
@@ -224,6 +232,5 @@ async function exportDiagram(format: DiagramExportFormat) {
 .btn.active {
   background: var(--c-btn-active-bg);
   color: var(--c-btn-active-fg);
-  border-color: var(--c-btn-active-border);
 }
 </style>
