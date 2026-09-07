@@ -26,10 +26,51 @@ Atrás do Cloudflare (proxy laranja, SSL Full strict): Caddy termina TLS com Ori
 npm run build && npm start   # Express em 127.0.0.1:3000
 ```
 
-Imagem Docker (Node + `dist` + `/api`). Variáveis iguais ao `.env` (`RESEND_API_KEY`, `MAIL_FROM`, `SITE_URL`, `PORT`). No container use `HOST=0.0.0.0` (o `.env` local usa `127.0.0.1`).
+Deploy em container: ver **Deploy (Docker Compose)** abaixo.
+
+## Deploy (Docker Compose)
+
+Imagem: Node + `dist` + `/api` (`Dockerfile`). O Compose sobe o serviço `app` (porta `127.0.0.1:3000`), lê variáveis de `.env` e persiste dados em volume (`dbdraw-data` → `/app/data`).
+
+### `.env`
+
+O `docker-compose.yml` usa `env_file: .env`. Mantenha esse arquivo **atualizado na VPS** — chave Resend, remetente e URL pública do site. Sem isso o login por e-mail quebra ou os magic links apontam para o host errado.
+
+Variáveis relevantes (ver `.env.example`):
+
+- `RESEND_API_KEY`, `MAIL_FROM` — envio do token
+- `SITE_URL` — base dos links mágicos (ex. `https://www.dbdraw.io`)
+- `PORT` / `HOST` — no bare-metal use `HOST=127.0.0.1`; no Compose o `HOST` é sobrescrito para `0.0.0.0`
+
+Depois de editar só o `.env` (sem mudança de código), recrie o container para aplicar:
+
+```bash
+docker compose up -d --force-recreate
+```
+
+### Primeiro deploy
+
+Na pasta do projeto (com `.env` pronto):
 
 ```bash
 docker compose up -d --build
+```
+
+### Redeploy (código atualizado)
+
+Quando o fonte na VPS mudou (`git pull`, etc.) e é preciso **rebuild da imagem** e **substituir o container** em execução:
+
+```bash
+docker compose up -d --build
+```
+
+O `--build` recompila a imagem se o contexto/Dockerfile mudou; o `up -d` recria o container com a imagem nova e sobe em detached. O volume de dados permanece (modelos/usuários não se perdem no rebuild).
+
+Conferir:
+
+```bash
+docker compose ps
+docker compose logs -f --tail=100
 ```
 
 ## Configuração Cloudfare
