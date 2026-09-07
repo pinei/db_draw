@@ -81,7 +81,11 @@ export function generateDbml(schema: ErSchema): string {
     return `Table ${entity.name} {\n${fields}\n}`
   })
 
-  return [...tables, '', ...refs].join('\n')
+  // Blank line between tables and before the Refs block; Refs stay packed
+  const parts: string[] = []
+  if (tables.length) parts.push(tables.join('\n\n'))
+  if (refs.length) parts.push(refs.join('\n'))
+  return parts.join('\n\n')
 }
 
 // Maps cardinality pair to DBML ref operator
