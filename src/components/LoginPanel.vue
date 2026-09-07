@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
-import AppLogo from './AppLogo.vue'
 
 const auth = useAuthStore()
 const email = ref(auth.loginDraft?.email || auth.email || '')
@@ -48,10 +47,11 @@ async function handleGenerate() {
 </script>
 
 <template>
-  <div class="login-root">
-    <div class="login-card">
-      <AppLogo class="login-logo" />
-      <div class="login-subtitle">Sign in with email and token, or generate a new token by email</div>
+  <div class="login-card">
+      <h2 class="login-heading">Try it <em>free</em></h2>
+      <p class="login-subtitle">
+        Generate a token with your email and start drawing.
+      </p>
 
       <label class="login-field">
         <span>Email</span>
@@ -85,41 +85,40 @@ async function handleGenerate() {
       <div v-if="message" class="login-message" :class="messageKind">
         {{ message }}
       </div>
-    </div>
   </div>
 </template>
 
 <style scoped>
-.login-root {
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--c-canvas-bg);
-}
-
 .login-card {
   background: var(--c-panel-bg);
   border: 1px solid var(--c-panel-border);
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
   padding: 24px 28px 24px;
-  width: 360px;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.login-logo {
-  width: 220px;
-  margin: 0 auto 4px;
+.login-heading {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--c-field-name);
+}
+
+.login-heading em {
+  font-style: normal;
+  color: var(--c-entity-border-hover);
 }
 
 .login-subtitle {
-  font-size: 12px;
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.45;
   color: var(--c-panel-label);
-  margin-bottom: 4px;
 }
 
 .login-field {

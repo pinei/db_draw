@@ -26,29 +26,36 @@ Não há lint nem teste automatizado configurado. O typecheck é feito pelo `vue
 ```
 src/
   main.ts                     # bootstrap: createApp + Pinia + mount
-  App.vue                     # gate de login + compõe Canvas/CodePanel/SettingsPanel; carrega/semeia estado após auth
+  App.vue                     # gate: landing vs EditorApp (async); magic-link login
+  EditorApp.vue               # canvas + painéis; carrega/semeia estado após auth
   style.css                   # CSS global + variáveis (--c-*)
   model/
     types.ts                  # TODOS os tipos de domínio e apresentação (ErSchema, DiagramState, etc.)
     sampleData.ts             # schema de exemplo "biblioteca" (9 entidades, todas as cardinalidades)
+    landingSample.ts          # 4 tabelas + posições do preview da landing
   stores/
     diagram.ts                # Pinia store: estado central, getters, actions, auto-save debounced
     auth.ts                   # sessão do usuário (email/token em localStorage) + login/logout
   utils/
-    persist.ts                # load/save via API local + validação de DBML (@dbml/parse) + auth API
+    authApi.ts                # POST /api/auth (leve — a landing não puxa persist/DBML)
+    persist.ts                # load/save via API local + validação de DBML (@dbml/parse)
     codePlaceholder.ts        # serializers DBML e Mermaid a partir de ErSchema
     connectionPoints.ts       # geometria de pontos de conexão, snap em arestas, posição de labels
     connectorPath.ts          # paths SVG: bezier (curved) e ortogonal (Manhattan)
+    diagramExport.ts          # PNG/SVG do canvas (html2canvas nos cards; bake de markers)
   components/
+    LandingPage.vue           # landing: hero + DemoPreview + LoginPanel
+    DemoPreview.vue           # viewport de demo (notação/conector/tema, sem store)
     DiagramCanvas.vue         # SVG raiz, pan/zoom, drag de entidade/ponto/label
     ErEntity.vue              # card de entidade (foreignObject com HTML interno)
     ErConnector.vue           # linha de relação + markers + handles + label
+    DemoConnector.vue         # conector só-leitura da landing (sem store / drag)
     ConnectorMarker.vue       # <defs> com todos os markers SVG por notação/cardinalidade
     SettingsPanel.vue         # controles de estilo/notação/zoom + usuário/logout + status de save
     CodePanel.vue             # painel de código DBML/Mermaid (edição + apply + highlight read-only)
     ModelBar.vue              # pílula /id + nome + botão 🗂 (popover ModelManager)
     ModelManager.vue          # popover: lista modelos (id+meta), abre (flush antes) e cria (blank)
-    LoginPanel.vue            # tela de login (e-mail + token, gerar token)
+    LoginPanel.vue            # card de login (e-mail + token, gerar token)
 server/
   app.ts                      # Express: /api/auth + /api/models (Vite e produção)
   store.ts                    # filesystem de user.json e modelos
@@ -82,10 +89,10 @@ Regras importantes:
 ## Como as coisas funcionam
 
 ### Autenticação multiusuário (dev apenas)
-Login com e-mail + token via `LoginPanel.vue` (gate no `App.vue`; sessão em `localStorage`, store `auth.ts`). Logout chama `resetState()` da diagram store (estado é global e sem dono — sem isso o próximo login herdaria o diagrama em memória e o seed de 404 o persistiria na pasta do novo usuário). Seed de primeiro login usa `resetState()` + `saveModel` (defaults pristinos, nunca o estado corrente). Auto-save não dispara deslogado. Endpoints em `server/app.ts` (Vite monta o mesmo router; `npm start` serve `dist/` + API): `POST /api/auth/token {email}` (gera token, grava `user.json` preservando meta anterior, envia o token por e-mail via Resend — `RESEND_API_KEY` em `.env`) e `POST /api/auth/login {email, token}` (compara com `timingSafeEqual`). Link mágico `/?email=&token=` (no e-mail) faz login automático no `App.vue` e remove os params da URL. E-mail vira pasta `data/user/<dominio>/<nome>` (lowercase, validado contra path traversal). `GET/PUT /api/models/:name` exigem headers `X-User-Email`/`X-Auth-Token` e operam em `data/user/.../models/:name/`; `GET /api/models` (sem nome) lista `[{id, meta}]` (meta best-effort, null se ausente); 401 vira `AuthError` e desloga. Modelo atual = `currentModelId` na store (fora do artefato, lembrado em `localStorage`); trocar/criar faz `flushSave()` antes para não perder a janela do debounce. Tokens em plaintext, sem expiração. `user.json` guarda também `lastModelId` (atualizado a cada GET/PUT de modelo, best-effort); o login o devolve e o `App` abre esse modelo (hint do servidor vence o `localStorage`, que cobre só reloads).
+Login com e-mail + token via `LoginPanel.vue` na landing (`LandingPage.vue`; sessão em `localStorage`, store `auth.ts`). O editor (`EditorApp.vue`) é `import()` depois do login — a landing não puxa `persist` / `@dbml/parse` / `html2canvas`. Logout desmonta o editor, que chama `resetState()` no `onUnmounted` (estado é global e sem dono — sem isso o próximo login herdaria o diagrama em memória e o seed de 404 o persistiria na pasta do novo usuário). Seed de primeiro login usa `resetState()` + `saveModel` (defaults pristinos, nunca o estado corrente). Auto-save não dispara deslogado. Endpoints em `server/app.ts` (Vite monta o mesmo router; `npm start` serve `dist/` + API): `POST /api/auth/token {email}` (gera token, grava `user.json` preservando meta anterior, envia o token por e-mail via Resend — `RESEND_API_KEY` em `.env`) e `POST /api/auth/login {email, token}` (compara com `timingSafeEqual`). Link mágico `/?email=&token=` (no e-mail) faz login automático no `App.vue` e remove os params da URL. E-mail vira pasta `data/user/<dominio>/<nome>` (lowercase, validado contra path traversal). `GET/PUT /api/models/:name` exigem headers `X-User-Email`/`X-Auth-Token` e operam em `data/user/.../models/:name/`; `GET /api/models` (sem nome) lista `[{id, meta}]` (meta best-effort, null se ausente); 401 vira `AuthError` e desloga. Modelo atual = `currentModelId` na store (fora do artefato, lembrado em `localStorage`); trocar/criar faz `flushSave()` antes para não perder a janela do debounce. Tokens em plaintext, sem expiração. `user.json` guarda também `lastModelId` (atualizado a cada GET/PUT de modelo, best-effort); o login o devolve e o `EditorApp` abre esse modelo (hint do servidor vence o `localStorage`, que cobre só reloads).
 
 ### Persistência (dev apenas)
-A persistência é o router Express em `server/app.ts` (`GET/PUT /api/models/:name`, autenticado) e grava em `data/user/.../models/:name/` (`.json`, `.dbml`, `.mermaid`). Em dev o Vite monta o mesmo router; em produção `npm start` serve `dist/` + API. Sem o servidor (`vite preview` ou arquivo estático) o app roda em memória silenciosamente (`App.vue` usa try/catch). Primeiro login sem modelo → 404 → `App.vue` semeia do `sampleData` em memória.
+A persistência é o router Express em `server/app.ts` (`GET/PUT /api/models/:name`, autenticado) e grava em `data/user/.../models/:name/` (`.json`, `.dbml`, `.mermaid`). Em dev o Vite monta o mesmo router; em produção `npm start` serve `dist/` + API. Sem o servidor (`vite preview` ou arquivo estático) o app roda em memória silenciosamente (`EditorApp.vue` usa try/catch). Primeiro login sem modelo → 404 → `EditorApp.vue` semeia do `sampleData` em memória.
 
 `saveModel` (em `utils/persist.ts`) anexa os campos derivados `_dbml` e `_mermaid` como side-channel; `loadModel` os remove ao ler. O auto-save é debounced (1.5s) via `watch(..., { deep: true })` na store.
 

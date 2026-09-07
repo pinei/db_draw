@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { requestToken as fetchToken, loginRequest } from '../utils/persist'
+import { requestToken as fetchToken, loginRequest } from '../utils/authApi'
 
 const EMAIL_KEY = 'dbdraw.auth.email'
 const TOKEN_KEY = 'dbdraw.auth.token'
