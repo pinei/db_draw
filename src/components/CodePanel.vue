@@ -278,7 +278,7 @@ function handleApply() {
           />
         </div>
 
-        <button class="btn apply-btn" :disabled="!isEditable" @click="handleApply">Apply</button>
+        <button class="apply-btn" :disabled="!isEditable" @click="handleApply">Apply</button>
 
         <div v-if="parseStatus !== 'idle'" class="parse-message" :class="parseStatus">
           {{ parseMessage }}
@@ -380,7 +380,10 @@ function handleApply() {
 
 .btn-group {
   display: flex;
-  gap: 4px;
+  overflow: hidden;
+  border: 1px solid var(--c-btn-border);
+  border-radius: 6px;
+  background: var(--c-btn-bg);
 }
 
 .docs-link {
@@ -412,27 +415,32 @@ function handleApply() {
   line-height: 1;
 }
 
-.btn {
+.btn-group .btn {
   flex: 1;
   padding: 5px 8px;
   font-size: 11px;
   font-family: inherit;
-  border: 1px solid var(--c-btn-border);
-  border-radius: 5px;
-  background: var(--c-btn-bg);
+  border: none;
+  border-right: 1px solid var(--c-btn-border);
+  border-radius: 0;
+  background: transparent;
   color: var(--c-btn-fg);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
 }
 
-.btn:hover {
+.btn-group .btn:last-child {
+  border-right: none;
+}
+
+.btn-group .btn:hover {
   background: var(--c-btn-hover-bg);
 }
 
-.btn.active {
+.btn-group .btn.active {
   background: var(--c-btn-active-bg);
   color: var(--c-btn-active-fg);
-  border-color: var(--c-btn-active-border);
 }
 
 .code-area-wrapper {
