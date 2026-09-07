@@ -92,18 +92,33 @@ export interface CompiledDbml {
   ignored: number
 }
 
-function offsetToLineCol(text: string, offset: unknown): string {
+function offsetToLineCol(text: string, offset: unknown): { line: number; col: number; label: string } {
   const i = typeof offset === 'number' ? Math.max(0, Math.min(offset, text.length)) : 0
   const upto = text.slice(0, i)
   const line = (upto.match(/\n/g) || []).length + 1
   const col = i - (upto.lastIndexOf('\n') + 1) + 1
-  return `${line}:${col}`
+  return { line, col, label: `${line}:${col}` }
 }
 
-function formatIssues(text: string, issues: DbmlIssue[]): string {
-  return issues
-    .map((e) => `${offsetToLineCol(text, e.start)} ${String(e.message ?? 'error')}`)
-    .join('; ')
+export interface DbmlIssueLine {
+  line: number
+  col: number
+  message: string
+}
+
+function toIssueLines(text: string, issues: DbmlIssue[]): DbmlIssueLine[] {
+  return issues.map((e) => {
+    const { line, col, label } = offsetToLineCol(text, e.start)
+    return { line, col, message: `${label} ${String(e.message ?? 'error')}` }
+  })
+}
+
+function formatIssues(lines: DbmlIssueLine[]): string {
+  return lines.map((e) => e.message).join('\n')
+}
+
+function fail(message: string, issues: DbmlIssueLine[] = []): { ok: false; message: string; issues: DbmlIssueLine[] } {
+  return { ok: false, message: message.startsWith('✗') ? message : `✗ ${message}`, issues }
 }
 
 function compileSource(text: string) {
@@ -127,7 +142,9 @@ function opToMany(op: string): [boolean, boolean] {
 
 // ─── Compile: validate + extract tables/refs ─────────────────────────────────
 
-export function compileDbml(text: string): { ok: true; value: CompiledDbml } | { ok: false; message: string } {
+export function compileDbml(
+  text: string,
+): { ok: true; value: CompiledDbml } | { ok: false; message: string; issues: DbmlIssueLine[] } {
   let working = text
   const selfLoopRefs: NormalizedRef[] = []
   let ignored = 0
@@ -136,7 +153,8 @@ export function compileDbml(text: string): { ok: true; value: CompiledDbml } | {
   const issues = first.getErrors() as unknown as DbmlIssue[]
   const hardErrors = issues.filter((e) => e.code !== SELF_REF_CODE)
   if (hardErrors.length > 0) {
-    return { ok: false, message: `✗ ${formatIssues(text, hardErrors)}` }
+    const lines = toIssueLines(text, hardErrors)
+    return fail(formatIssues(lines), lines)
   }
 
   // Tolerated 5002s poison getValue() → drop those lines and recompile.
@@ -169,14 +187,16 @@ export function compileDbml(text: string): { ok: true; value: CompiledDbml } | {
   const result = selfRefIssues.length > 0 ? compileSource(working) : first
   const rest = result.getErrors() as unknown as DbmlIssue[]
   if (rest.length > 0) {
-    return { ok: false, message: `✗ ${formatIssues(text, rest)}` }
+    // Offsets are relative to the text that was compiled (`working`)
+    const lines = toIssueLines(working, rest)
+    return fail(formatIssues(lines), lines)
   }
   const db = result.getValue() as unknown as ParsedDb | undefined
-  if (!db) return { ok: false, message: '✗ Error: parse produced no result' }
+  if (!db) return fail('Error: parse produced no result')
 
   const tables = (db.tables ?? []).filter((t) => typeof t.name === 'string')
   if (tables.length === 0) {
-    return { ok: false, message: '✗ Nothing to apply — no Table blocks in code' }
+    return fail('Nothing to apply — no Table blocks in code')
   }
   const knownTables = new Set(tables.map((t) => t.name as string))
 
@@ -306,18 +326,19 @@ export interface DbmlPatch {
   removedRelIds: string[]
   // neighbor (already-placed) entity ids per created entity, for placement
   neighbors: Record<string, string[]>
-  stats: {
-    tables: number
-    rels: number
-    createdEntities: number
-    removedEntities: number
-    changedEntities: number
-    createdRels: number
-    removedRels: number
-    changedRels: number
-    ignored: number
-  }
-  summary: string
+  stats: DbmlApplyStats
+}
+
+export interface DbmlApplyStats {
+  tables: number
+  rels: number
+  createdEntities: number
+  removedEntities: number
+  changedEntities: number
+  createdRels: number
+  removedRels: number
+  changedRels: number
+  ignored: number
 }
 
 function normType(t: string): string {
@@ -513,11 +534,6 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
     changedRels,
     ignored: compiled.ignored,
   }
-  const eBits = `+${stats.createdEntities} −${stats.removedEntities} ~${stats.changedEntities}`
-  const rBits = `+${stats.createdRels} −${stats.removedRels} ~${stats.changedRels}`
-  const ign = stats.ignored > 0 ? `; ${stats.ignored} ignored` : ''
-  const summary = `✓ Applied — ${stats.tables} tables, ${stats.rels} relationships (tables ${eBits}; relationships ${rBits}${ign})`
-
   return {
     schema,
     createdEntityIds,
@@ -526,6 +542,5 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
     removedRelIds,
     neighbors,
     stats,
-    summary,
   }
 }

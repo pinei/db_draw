@@ -113,9 +113,18 @@ function highlightDbmlLine(line: string, tableRe: RegExp | null): string {
   return out
 }
 
-export function highlightDbml(src: string, tableNames: string[]): string {
+export function highlightDbml(
+  src: string,
+  tableNames: string[],
+  errorLines?: ReadonlySet<number>,
+): string {
   const tableRe = tablePattern(tableNames)
-  return src.split('\n').map((line) => highlightDbmlLine(line, tableRe)).join('\n')
+  return src.split('\n').map((line, i) => {
+    const html = highlightDbmlLine(line, tableRe)
+    if (!errorLines?.has(i + 1)) return html
+    // Non-breaking space so empty lines still paint a red strip
+    return `<span class="tok-err-line">${html || '&nbsp;'}</span>`
+  }).join('\n')
 }
 
 // ─── Mermaid ─────────────────────────────────────────────────────────────────

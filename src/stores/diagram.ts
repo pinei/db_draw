@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import type { DiagramState, PersistedDiagramState, ConnectorStyle, NotationStyle, CodeFormat, ThemeMode, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel } from '../model/types'
 import { bibliotecaSchema } from '../model/sampleData'
 import { saveModel, AuthError, listModels, loadModel } from '../utils/persist'
-import { compileDbml, buildDbmlPatch } from '../utils/dbmlImport'
+import { compileDbml, buildDbmlPatch, type DbmlApplyStats, type DbmlIssueLine } from '../utils/dbmlImport'
 import { defaultMeta, sanitizeTags, seedMeta } from '../utils/modelMeta'
 import { useAuthStore } from './auth'
 
@@ -283,9 +283,13 @@ export const useDiagramStore = defineStore('diagram', () => {
   // DBML Apply: incremental sync — matched entities/relationships keep their
   // ids (hence positions and connector/label overrides); only the diff moves.
   // Single mutation: all or nothing, one auto-save.
-  function applyDbml(text: string): { success: boolean; message: string } {
+  function applyDbml(
+    text: string,
+  ):
+    | { success: true; stats: DbmlApplyStats }
+    | { success: false; message: string; issues: DbmlIssueLine[] } {
     const compiled = compileDbml(text)
-    if (!compiled.ok) return { success: false, message: compiled.message }
+    if (!compiled.ok) return { success: false, message: compiled.message, issues: compiled.issues }
     const patch = buildDbmlPatch(state.value.schema, compiled.value)
 
     const positions: Record<string, EntityRect> = { ...state.value.entityPositions }
@@ -309,7 +313,7 @@ export const useDiagramStore = defineStore('diagram', () => {
     state.value.entityPositions = positions
     state.value.connectorPoints = connectorPoints
     state.value.labelPositions = labelPositions
-    return { success: true, message: patch.summary }
+    return { success: true, stats: patch.stats }
   }
 
   // Model metadata edits (name/description/tags) — id is the folder name and

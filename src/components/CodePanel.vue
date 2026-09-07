@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth'
 import { generateDbml, generateMermaid } from '../utils/codePlaceholder'
 import { highlightDbml, highlightMermaid } from '../utils/dbmlHighlight'
 import type { CodeFormat } from '../model/types'
+import type { DbmlApplyStats, DbmlIssueLine } from '../utils/dbmlImport'
 
 const store = useDiagramStore()
 const auth = useAuthStore()
@@ -132,6 +133,58 @@ const codeText = computed(() =>
 
 const parseStatus = ref<'idle' | 'success' | 'error'>('idle')
 const parseMessage = ref('')
+const applyStats = ref<DbmlApplyStats | null>(null)
+const applyIssues = ref<DbmlIssueLine[]>([])
+
+type DiffLine = { kind: 'added' | 'removed' | 'updated'; n: number; label: string }
+
+function diffLines(added: number, removed: number, updated: number): DiffLine[] {
+  const lines: DiffLine[] = []
+  if (added) lines.push({ kind: 'added', n: added, label: 'added' })
+  if (removed) lines.push({ kind: 'removed', n: removed, label: 'removed' })
+  if (updated) lines.push({ kind: 'updated', n: updated, label: 'updated' })
+  return lines
+}
+
+const tableDiff = computed(() => {
+  const s = applyStats.value
+  if (!s) return []
+  return diffLines(s.createdEntities, s.removedEntities, s.changedEntities)
+})
+
+const relDiff = computed(() => {
+  const s = applyStats.value
+  if (!s) return []
+  return diffLines(s.createdRels, s.removedRels, s.changedRels)
+})
+
+const applyUnchanged = computed(() =>
+  !!applyStats.value && tableDiff.value.length === 0 && relDiff.value.length === 0,
+)
+
+const errorLines = computed(() => {
+  if (applyIssues.value.length) return applyIssues.value.map((e) => e.message)
+  return parseMessage.value
+    .replace(/^✗\s*/, '')
+    .split(/\n|; /)
+    .map((s) => s.trim())
+    .filter(Boolean)
+})
+
+const errorLineSet = computed(() => {
+  const set = new Set<number>()
+  for (const e of applyIssues.value) {
+    if (e.line > 0) set.add(e.line)
+  }
+  return set
+})
+
+function dismissApplyResult() {
+  parseStatus.value = 'idle'
+  parseMessage.value = ''
+  applyStats.value = null
+  applyIssues.value = []
+}
 
 // ─── Syntax highlighting (overlay) ───────────────────────────────────────────
 // Highlighted <pre> sits under a transparent <textarea> (DBML only). Same font
@@ -144,7 +197,7 @@ const highlightedHtml = computed(() => {
   const isDbml = layout.value.codeFormat === 'dbml'
   const src = isDbml ? draftDbml.value : generateMermaid(store.state.schema)
   const html = isDbml
-    ? highlightDbml(src, tableNames.value)
+    ? highlightDbml(src, tableNames.value, errorLineSet.value)
     : highlightMermaid(src, tableNames.value)
   // <pre> drops a trailing newline — keep it so the last line never collapses
   return src.endsWith('\n') ? html + '\n' : html
@@ -162,6 +215,9 @@ function syncScroll() {
 
 function onInput(e: Event) {
   draftDbml.value = (e.target as HTMLTextAreaElement).value
+  // User edits invalidate the last Apply banner; schema→draft sync after
+  // Apply must NOT (that used to clear the banner in the same tick).
+  dismissApplyResult()
   // Re-highlight can change wrap height; keep layers locked after paint
   nextTick(syncScroll)
 }
@@ -170,19 +226,43 @@ function blurOnEscape(e: KeyboardEvent) {
   (e.target as HTMLTextAreaElement).blur()
 }
 
-// Clear parse message when user edits DBML
-watch(() => draftDbml.value, () => {
-  parseStatus.value = 'idle'
-  parseMessage.value = ''
-})
-
 function handleApply() {
   // Single-step incremental sync: validates, diffs by exact name and patches
   // the schema in one mutation. Matched ids (hence layout) are preserved; the
-  // draft resyncs from the new schema through the watcher above.
+  // draft resyncs from the new schema through the generateDbml watcher.
   const result = store.applyDbml(draftDbml.value)
-  parseStatus.value = result.success ? 'success' : 'error'
-  parseMessage.value = result.message
+  if (result.success) {
+    parseStatus.value = 'success'
+    parseMessage.value = ''
+    applyStats.value = result.stats
+    applyIssues.value = []
+  } else {
+    parseStatus.value = 'error'
+    parseMessage.value = result.message
+    applyStats.value = null
+    applyIssues.value = result.issues
+    const first = result.issues[0]?.line
+    if (first) nextTick(() => scrollToLine(first))
+  }
+}
+
+function scrollToLine(line: number) {
+  const ta = textareaEl.value
+  if (!ta || line < 1) return
+  const text = ta.value
+  let pos = 0
+  for (let i = 1; i < line; i++) {
+    const next = text.indexOf('\n', pos)
+    if (next < 0) { pos = text.length; break }
+    pos = next + 1
+  }
+  ta.focus()
+  ta.setSelectionRange(pos, pos)
+  // Approximate scroll: line height from computed style
+  const lh = parseFloat(getComputedStyle(ta).lineHeight) || 18
+  const pad = parseFloat(getComputedStyle(ta).paddingTop) || 0
+  ta.scrollTop = Math.max(0, (line - 1) * lh - ta.clientHeight / 3 + pad)
+  syncScroll()
 }
 </script>
 
@@ -250,8 +330,44 @@ function handleApply() {
 
         <button class="apply-btn" :disabled="!isEditable" @click="handleApply">Apply</button>
 
-        <div v-if="parseStatus !== 'idle'" class="parse-message" :class="parseStatus">
-          {{ parseMessage }}
+        <div v-if="parseStatus === 'success' && applyStats" class="parse-message success">
+          <button type="button" class="apply-dismiss" title="Dismiss" aria-label="Dismiss" @click="dismissApplyResult">×</button>
+          <div class="apply-title">Applied</div>
+          <div class="apply-totals">
+            {{ applyStats.tables }} {{ applyStats.tables === 1 ? 'table' : 'tables' }}
+            ·
+            {{ applyStats.rels }} {{ applyStats.rels === 1 ? 'relationship' : 'relationships' }}
+          </div>
+          <div v-if="applyUnchanged" class="apply-note">No changes</div>
+          <div v-else class="apply-diff">
+            <div v-if="tableDiff.length" class="apply-col">
+              <div class="apply-col-label">Tables</div>
+              <ul>
+                <li v-for="line in tableDiff" :key="'t-' + line.kind" :class="line.kind">
+                  <span class="diff-n">{{ line.n }}</span> {{ line.label }}
+                </li>
+              </ul>
+            </div>
+            <div v-if="relDiff.length" class="apply-col">
+              <div class="apply-col-label">Relationships</div>
+              <ul>
+                <li v-for="line in relDiff" :key="'r-' + line.kind" :class="line.kind">
+                  <span class="diff-n">{{ line.n }}</span> {{ line.label }}
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div v-if="applyStats.ignored > 0" class="apply-note muted">
+            {{ applyStats.ignored }} unsupported {{ applyStats.ignored === 1 ? 'item' : 'items' }} skipped
+          </div>
+        </div>
+
+        <div v-else-if="parseStatus === 'error'" class="parse-message error">
+          <button type="button" class="apply-dismiss" title="Dismiss" aria-label="Dismiss" @click="dismissApplyResult">×</button>
+          <div class="apply-title error-title">Could not apply</div>
+          <ul class="error-list">
+            <li v-for="(line, i) in errorLines" :key="i">{{ line }}</li>
+          </ul>
         </div>
       </div>
     </Transition>
@@ -504,23 +620,156 @@ function handleApply() {
 }
 
 .parse-message {
+  position: relative;
   font-size: 10px;
-  line-height: 1.4;
-  padding: 6px 8px;
-  border-radius: 4px;
+  line-height: 1.45;
+  padding: 8px 28px 8px 10px;
+  border-radius: 6px;
   margin-top: 4px;
   transition: color 0.2s, background 0.2s;
 }
 
 .parse-message.success {
-  color: #4ade80;
-  background: rgba(74, 222, 128, 0.1);
+  color: var(--c-field-name);
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
 }
 
 .parse-message.error {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.1);
+  color: #991b1b;
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.4);
 }
+
+html[data-theme='dark'] .parse-message.error {
+  color: #fecaca;
+}
+
+.apply-title.error-title {
+  color: #dc2626;
+}
+
+html[data-theme='dark'] .apply-title.error-title {
+  color: #f87171;
+}
+
+.error-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: inherit;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.error-list li {
+  word-break: break-word;
+}
+
+.apply-dismiss {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--c-field-type);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.apply-dismiss:hover {
+  background: rgba(127, 127, 127, 0.18);
+  color: var(--c-field-name);
+}
+
+.apply-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #15803d;
+  letter-spacing: 0.01em;
+}
+
+html[data-theme='dark'] .apply-title {
+  color: #4ade80;
+}
+
+.apply-totals {
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--c-field-name);
+}
+
+.apply-note {
+  margin-top: 6px;
+  color: var(--c-field-type);
+}
+
+.apply-note.muted {
+  font-size: 9px;
+  color: var(--c-field-type);
+}
+
+.apply-diff {
+  display: flex;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.apply-col-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--c-field-type);
+  margin-bottom: 3px;
+}
+
+.apply-col ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.apply-col li {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--c-field-name);
+}
+
+.apply-col .diff-n {
+  display: inline-block;
+  min-width: 1.1em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.apply-col li.added { color: #15803d; }
+.apply-col li.removed { color: #b91c1c; }
+.apply-col li.updated { color: #a16207; }
+
+.apply-col li.added .diff-n,
+.apply-col li.removed .diff-n,
+.apply-col li.updated .diff-n {
+  color: inherit;
+}
+
+html[data-theme='dark'] .apply-col li.added { color: #4ade80; }
+html[data-theme='dark'] .apply-col li.removed { color: #f87171; }
+html[data-theme='dark'] .apply-col li.updated { color: #fbbf24; }
 
 /* ── Collapse transition ─────────────────────────────────────── */
 
@@ -558,4 +807,17 @@ html[data-theme='dark'] .code-preview .tok-annot   { color: #94a3b8; }
 html[data-theme='dark'] .code-preview .tok-op      { color: #c084fc; }
 html[data-theme='dark'] .code-preview .tok-str     { color: #22d3ee; }
 html[data-theme='dark'] .code-preview .tok-num     { color: #d8b4fe; }
+
+.code-preview .tok-err-line {
+  background: rgba(239, 68, 68, 0.55);
+  box-shadow: inset 3px 0 0 #ef4444;
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+html[data-theme='dark'] .code-preview .tok-err-line {
+  background: rgba(239, 68, 68, 0.42);
+  box-shadow: inset 3px 0 0 #f87171;
+}
 </style>
