@@ -213,14 +213,21 @@ function handleApply() {
   display: flex;
   flex-direction: column;
   resize: both;
+  box-sizing: border-box;
 }
 
+/* Explicit height (not min-height) so read-only <pre> and edit <textarea>
+   share the same box from the first paint — content no longer drives size.
+   16px top + 16px bottom = usable viewport; matches the panel's top inset. */
 .code-panel.expanded {
-  min-height: 52vh;
+  height: calc(100vh - 32px);
+  max-height: calc(100vh - 32px);
 }
 
 .code-panel.collapsed {
   resize: none;
+  height: auto;
+  max-height: none;
 }
 
 .panel-header {
