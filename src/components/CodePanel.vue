@@ -133,10 +133,10 @@ const codeText = computed(() =>
 const parseStatus = ref<'idle' | 'success' | 'error'>('idle')
 const parseMessage = ref('')
 
-// ─── Syntax highlighting (read-only <pre>, swapped in on focus) ─────────────
-// The highlighters only know the live schema's table names, so generated AND
-// hand-typed references highlight exactly. Editing swaps the <pre> for the
-// plain <textarea> (no fragile transparent-overlay scroll sync to maintain).
+// ─── Syntax highlighting (overlay) ───────────────────────────────────────────
+// Highlighted <pre> sits under a transparent <textarea> (DBML only). Same font
+// metrics + scroll sync keep caret and tokens aligned while typing. Mermaid
+// stays read-only on the <pre> alone. Table names come from the live schema.
 
 const tableNames = computed(() => store.state.schema.entities.map((e) => e.name))
 
@@ -150,52 +150,24 @@ const highlightedHtml = computed(() => {
   return src.endsWith('\n') ? html + '\n' : html
 })
 
-const previewHint = computed(() =>
-  layout.value.codeFormat === 'dbml'
-    ? `${layout.value.codeFormat.toUpperCase()} code (highlighted — click to edit)`
-    : `${layout.value.codeFormat.toUpperCase()} code (highlighted, read-only)`,
-)
-
-const editing = ref(false)
 const previewEl = ref<HTMLElement | null>(null)
-const savedScroll = { top: 0, left: 0 }
 
-function startEdit() {
-  if (!isEditable.value || editing.value) return
-  if (previewEl.value) {
-    savedScroll.top = previewEl.value.scrollTop
-    savedScroll.left = previewEl.value.scrollLeft
-  }
-  editing.value = true
-  nextTick(() => {
-    if (textareaEl.value) {
-      textareaEl.value.scrollTop = savedScroll.top
-      textareaEl.value.scrollLeft = savedScroll.left
-      textareaEl.value.focus()
-    }
-  })
-}
-
-function stopEdit() {
-  if (textareaEl.value) {
-    savedScroll.top = textareaEl.value.scrollTop
-    savedScroll.left = textareaEl.value.scrollLeft
-  }
-  editing.value = false
-  nextTick(() => {
-    if (previewEl.value) {
-      previewEl.value.scrollTop = savedScroll.top
-      previewEl.value.scrollLeft = savedScroll.left
-    }
-  })
-}
-
-function blurOnEscape(e: KeyboardEvent) {
-  (e.target as HTMLTextAreaElement).blur()
+function syncScroll() {
+  const ta = textareaEl.value
+  const pre = previewEl.value
+  if (!ta || !pre) return
+  pre.scrollTop = ta.scrollTop
+  pre.scrollLeft = ta.scrollLeft
 }
 
 function onInput(e: Event) {
   draftDbml.value = (e.target as HTMLTextAreaElement).value
+  // Re-highlight can change wrap height; keep layers locked after paint
+  nextTick(syncScroll)
+}
+
+function blurOnEscape(e: KeyboardEvent) {
+  (e.target as HTMLTextAreaElement).blur()
 }
 
 // Clear parse message when user edits DBML
@@ -255,25 +227,23 @@ function handleApply() {
 
         <div class="code-area-wrapper">
           <pre
-            v-if="!editing"
             ref="previewEl"
-            class="code-preview"
-            :class="{ editable: isEditable }"
-            tabindex="0"
-            :aria-label="previewHint"
-            @click="startEdit"
-            @focus="startEdit"
+            class="code-layer code-preview"
+            :class="{ backdrop: isEditable }"
+            :aria-hidden="isEditable ? 'true' : undefined"
+            :aria-label="isEditable ? undefined : 'Mermaid code (read-only)'"
             v-html="highlightedHtml"
-          /><!--
-       --><textarea
-            v-else
+          />
+          <textarea
+            v-if="isEditable"
             ref="textareaEl"
-            class="code-area"
+            class="code-layer code-area"
             :value="codeText"
             spellcheck="false"
-            :aria-label="`${layout.codeFormat.toUpperCase()} code`"
+            wrap="soft"
+            aria-label="DBML code"
             @input="onInput"
-            @blur="stopEdit"
+            @scroll="syncScroll"
             @keydown.escape="blurOnEscape"
           />
         </div>
@@ -451,63 +421,63 @@ function handleApply() {
   border: 1px solid var(--c-panel-border);
   border-radius: 6px;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  background: var(--c-canvas-bg);
+}
+
+/* Shared box for highlight <pre> and edit <textarea> — identical metrics so
+   soft-wrap and caret stay aligned. Both are absolute fills of the wrapper. */
+.code-layer {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 10px;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  tab-size: 2;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.code-preview {
+  background: transparent;
+  color: var(--c-field-name);
+  cursor: default;
+  outline: none;
+  z-index: 0;
+}
+
+/* Under the textarea: ignore pointer + hide scrollbar (textarea scrolls). */
+.code-preview.backdrop {
+  pointer-events: none;
+  scrollbar-width: none;
+}
+
+.code-preview.backdrop::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .code-area {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  width: 100%;
+  z-index: 1;
   resize: none;
-  box-sizing: border-box;
-  padding: 10px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.6;
-  background: var(--c-canvas-bg);
-  color: var(--c-field-name);
-  border: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--c-field-name);
   outline: none;
-  cursor: default;
-  tab-size: 2;
-  overflow: auto;
-  margin: 0;
-}
-
-.code-area.editable {
   cursor: text;
 }
 
-/* Read-only highlighted view — same metrics as .code-area so focus/blur
-   swapping never shifts the layout; only the spans add color.
-   min-height/min-width 0 lets the flex item shrink and scroll instead of
-   stretching the panel to full content height; pre-wrap mirrors the
-   textarea's soft wrapping so both lay out lines identically. */
-.code-preview {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 10px;
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.6;
-  background: var(--c-canvas-bg);
-  color: var(--c-field-name);
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  tab-size: 2;
-  overflow: auto;
-  cursor: default;
-  outline: none;
-}
-
-.code-preview.editable {
-  cursor: text;
+.code-area::selection {
+  background: color-mix(in srgb, var(--c-btn-active-bg) 35%, transparent);
+  color: transparent;
 }
 
 .apply-btn {
