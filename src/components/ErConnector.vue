@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
 import type { ErRelationship, EntityRect, ConnectorStyle, NotationStyle, Cardinality, LogicalCardinality } from '../model/types'
 import { getConnectionPoints, snapToEntityEdge, resolveLabelPosition, minMaxLabelPosition, selfLoopPoints } from '../utils/connectionPoints'
-import { bezierPath, orthogonalPath, polylinePath, roundedPolylinePath, selfLoopCorners, splitBezierPath, splitOrthogonalPath, splitPolyline, splitPolylinePoints, SELF_LOOP_CORNER_RADIUS } from '../utils/connectorPath'
+import { bezierPath, orthogonalPath, polylinePath, roundedPolylinePath, selfLoopCorners, splitBezierPath, splitOrthogonalPath, splitPolyline, splitRoundedPolyline, SELF_LOOP_CORNER_RADIUS } from '../utils/connectorPath'
 
 const props = defineProps<{
   relationship: ErRelationship
@@ -56,14 +56,9 @@ const barkerHalves = computed(() => {
   const { source, target } = geometry.value
   if (isSelfLoop.value) {
     const corners = selfLoopCorners(source, target)
-    if (props.connectorStyle === 'curved') {
-      const { first, second } = splitPolylinePoints(corners)
-      return {
-        first: roundedPolylinePath(first, SELF_LOOP_CORNER_RADIUS),
-        second: roundedPolylinePath(second, SELF_LOOP_CORNER_RADIUS),
-      }
-    }
-    return splitPolyline(corners)
+    return props.connectorStyle === 'curved'
+      ? splitRoundedPolyline(corners, SELF_LOOP_CORNER_RADIUS)
+      : splitPolyline(corners)
   }
   return props.connectorStyle === 'curved'
     ? splitBezierPath(source, target)

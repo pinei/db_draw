@@ -114,32 +114,108 @@ export function selfLoopCorners(source: ConnectionPoint, target: ConnectionPoint
 // so the smoothed curve provably stays outside the entity rect)
 export const SELF_LOOP_CORNER_RADIUS = 24
 
+type PathSeg =
+  | { kind: 'L'; to: Point }
+  | { kind: 'Q'; ctrl: Point; to: Point }
+
+interface BuiltPath {
+  start: Point
+  segs: PathSeg[]
+}
+
+/** Quadratic point at parameter t (P0 → ctrl → P2). */
+function quadAt(p0: Point, ctrl: Point, p2: Point, t: number): Point {
+  const u = 1 - t
+  return {
+    x: u * u * p0.x + 2 * u * t * ctrl.x + t * t * p2.x,
+    y: u * u * p0.y + 2 * u * t * ctrl.y + t * t * p2.y,
+  }
+}
+
+/** Approximate quadratic arc length via uniform samples. */
+function quadLength(p0: Point, ctrl: Point, p2: Point, samples = 12): number {
+  let L = 0
+  let prev = p0
+  for (let i = 1; i <= samples; i++) {
+    const p = quadAt(p0, ctrl, p2, i / samples)
+    L += dist(prev, p)
+    prev = p
+  }
+  return L
+}
+
+/** Find t∈[0,1] where arc length from p0 reaches `target` (samples + lerp). */
+function quadTAtLength(p0: Point, ctrl: Point, p2: Point, target: number, samples = 12): number {
+  let acc = 0
+  let prev = p0
+  for (let i = 1; i <= samples; i++) {
+    const t = i / samples
+    const p = quadAt(p0, ctrl, p2, t)
+    const seg = dist(prev, p)
+    if (acc + seg >= target) {
+      const f = seg === 0 ? 0 : (target - acc) / seg
+      return (i - 1 + f) / samples
+    }
+    acc += seg
+    prev = p
+  }
+  return 1
+}
+
+/** De Casteljau split of a quadratic at t → two quadratics sharing the cut point. */
+function splitQuad(p0: Point, ctrl: Point, p2: Point, t: number): {
+  mid: Point
+  firstCtrl: Point
+  secondCtrl: Point
+} {
+  const a = { x: p0.x + (ctrl.x - p0.x) * t, y: p0.y + (ctrl.y - p0.y) * t }
+  const b = { x: ctrl.x + (p2.x - ctrl.x) * t, y: ctrl.y + (p2.y - ctrl.y) * t }
+  const midPt = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+  return { mid: midPt, firstCtrl: a, secondCtrl: b }
+}
+
 /**
- * Renders a corner list as a smooth path with rounded corners (quadratic
- * fillets). Start/end points are exact; interior corners are cut with radius
- * clamped to half the adjacent segment lengths.
+ * Corner list → move + line/quadratic segments (fillets at interior corners,
+ * radius clamped to half the adjacent segment lengths).
  */
-export function roundedPolylinePath(corners: Point[], radius: number): string {
-  if (corners.length < 3) return polylinePath(corners)
-  let d = `M ${fmt(corners[0])}`
+function buildRoundedPolyline(corners: Point[], radius: number): BuiltPath {
+  const start = corners[0]
+  if (corners.length < 3) {
+    return { start, segs: corners.slice(1).map((to) => ({ kind: 'L' as const, to })) }
+  }
+  const segs: PathSeg[] = []
   for (let i = 1; i < corners.length - 1; i++) {
     const prev = corners[i - 1]
     const curr = corners[i]
     const next = corners[i + 1]
     const inLen = dist(prev, curr)
     const outLen = dist(curr, next)
-    if (inLen === 0 || outLen === 0) { d += ` L ${fmt(curr)}`; continue }
+    if (inLen === 0 || outLen === 0) {
+      segs.push({ kind: 'L', to: curr })
+      continue
+    }
     const r = Math.min(radius, inLen / 2, outLen / 2)
     const ux = (curr.x - prev.x) / inLen
     const uy = (curr.y - prev.y) / inLen
     const vx = (next.x - curr.x) / outLen
     const vy = (next.y - curr.y) / outLen
-    const a = { x: curr.x - ux * r, y: curr.y - uy * r }
-    const b = { x: curr.x + vx * r, y: curr.y + vy * r }
-    d += ` L ${fmt(a)} Q ${fmt(curr)} ${fmt(b)}`
+    segs.push({ kind: 'L', to: { x: curr.x - ux * r, y: curr.y - uy * r } })
+    segs.push({ kind: 'Q', ctrl: curr, to: { x: curr.x + vx * r, y: curr.y + vy * r } })
   }
-  d += ` L ${fmt(corners[corners.length - 1])}`
+  segs.push({ kind: 'L', to: corners[corners.length - 1] })
+  return { start, segs }
+}
+
+function pathFromBuilt(built: BuiltPath): string {
+  let d = `M ${fmt(built.start)}`
+  for (const s of built.segs) {
+    d += s.kind === 'L' ? ` L ${fmt(s.to)}` : ` Q ${fmt(s.ctrl)} ${fmt(s.to)}`
+  }
   return d
+}
+
+function fmt(p: Point): string {
+  return `${p.x} ${p.y}`
 }
 
 // ─── Path splitting (Barker notation: per-half line styles) ─────────────────
@@ -149,12 +225,88 @@ export interface PathHalves {
   second: string
 }
 
-function mid(a: Point, b: Point): Point {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+/**
+ * Renders a corner list as a smooth path with rounded corners (quadratic
+ * fillets). Start/end points are exact; interior corners are cut with radius
+ * clamped to half the adjacent segment lengths.
+ */
+export function roundedPolylinePath(corners: Point[], radius: number): string {
+  return pathFromBuilt(buildRoundedPolyline(corners, radius))
 }
 
-function fmt(p: Point): string {
-  return `${p.x} ${p.y}`
+/**
+ * Splits a rounded polyline at its arc-length midpoint so Barker halves keep
+ * every fillet (including the corner that lands on the solid/dotted junction).
+ */
+export function splitRoundedPolyline(corners: Point[], radius: number): PathHalves {
+  const built = buildRoundedPolyline(corners, radius)
+  if (built.segs.length === 0) {
+    const d = `M ${fmt(built.start)}`
+    return { first: d, second: d }
+  }
+
+  // Measure each segment
+  const lengths: number[] = []
+  let cursor = built.start
+  let total = 0
+  for (const s of built.segs) {
+    const len = s.kind === 'L' ? dist(cursor, s.to) : quadLength(cursor, s.ctrl, s.to)
+    lengths.push(len)
+    total += len
+    cursor = s.to
+  }
+  if (total === 0) {
+    const d = `M ${fmt(built.start)}`
+    return { first: d, second: d }
+  }
+
+  const half = total / 2
+  const firstSegs: PathSeg[] = []
+  let acc = 0
+  cursor = built.start
+  for (let i = 0; i < built.segs.length; i++) {
+    const s = built.segs[i]
+    const len = lengths[i]
+    if (acc + len >= half) {
+      const remain = half - acc
+      if (s.kind === 'L') {
+        const t = len === 0 ? 0 : remain / len
+        const m = {
+          x: cursor.x + (s.to.x - cursor.x) * t,
+          y: cursor.y + (s.to.y - cursor.y) * t,
+        }
+        firstSegs.push({ kind: 'L', to: m })
+        const secondSegs: PathSeg[] = [{ kind: 'L', to: s.to }, ...built.segs.slice(i + 1)]
+        return {
+          first: pathFromBuilt({ start: built.start, segs: firstSegs }),
+          second: pathFromBuilt({ start: m, segs: secondSegs }),
+        }
+      }
+      const t = quadTAtLength(cursor, s.ctrl, s.to, remain)
+      const { mid: m, firstCtrl, secondCtrl } = splitQuad(cursor, s.ctrl, s.to, t)
+      firstSegs.push({ kind: 'Q', ctrl: firstCtrl, to: m })
+      const secondSegs: PathSeg[] = [
+        { kind: 'Q', ctrl: secondCtrl, to: s.to },
+        ...built.segs.slice(i + 1),
+      ]
+      return {
+        first: pathFromBuilt({ start: built.start, segs: firstSegs }),
+        second: pathFromBuilt({ start: m, segs: secondSegs }),
+      }
+    }
+    firstSegs.push(s)
+    acc += len
+    cursor = s.to
+  }
+
+  return {
+    first: pathFromBuilt(built),
+    second: `M ${fmt(built.segs[built.segs.length - 1].to)}`,
+  }
+}
+
+function mid(a: Point, b: Point): Point {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
 }
 
 function polylineLength(pts: Point[]): number {
