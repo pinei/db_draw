@@ -93,9 +93,10 @@ export function orthogonalPath(src: ConnectionPoint, tgt: ConnectionPoint): stri
 }
 
 /**
- * Explicit outside corners for a self-loop in orthogonal mode. The route goes
- * up from the top-edge exit, right past the card, down, and back left into
- * the right-edge entry — every segment stays outside the entity rect.
+ * Explicit outside corners for a self-loop. The route goes up from the
+ * top-edge exit, right past the card, down, and back left into the
+ * right-edge entry — every segment stays outside the entity rect.
+ * Curved style fillets these corners; Orthogonal keeps them sharp.
  */
 export function selfLoopCorners(source: ConnectionPoint, target: ConnectionPoint, loop = 56): Point[] {
   const top = source.point.y - loop
@@ -177,13 +178,11 @@ export function splitBezierPath(src: ConnectionPoint, tgt: ConnectionPoint): Pat
   }
 }
 
-/** Splits an explicit corner list into two halves at its length midpoint. */
-export function splitPolyline(pts: Point[]): PathHalves {
+/** Splits an explicit corner list into two point lists at its length midpoint. */
+export function splitPolylinePoints(pts: Point[]): { first: Point[]; second: Point[] } {
   const total = polylineLength(pts)
   if (total === 0) {
-    // Degenerate connector — render a dot for both halves
-    const d = `M ${fmt(pts[0])}`
-    return { first: d, second: d }
+    return { first: [pts[0]], second: [pts[0]] }
   }
   const half = total / 2
   const first: Point[] = [pts[0]]
@@ -197,16 +196,19 @@ export function splitPolyline(pts: Point[]): PathHalves {
         y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * t,
       }
       first.push(m)
-      return {
-        first:  'M ' + first.map(fmt).join(' L '),
-        second: 'M ' + [m, ...pts.slice(i)].map(fmt).join(' L '),
-      }
+      return { first, second: [m, ...pts.slice(i)] }
     }
     acc += segLen
     first.push(pts[i])
   }
   // Unreachable fallback — whole polyline as the first half
-  return { first: 'M ' + pts.map(fmt).join(' L '), second: `M ${fmt(pts[pts.length - 1])}` }
+  return { first: pts, second: [pts[pts.length - 1]] }
+}
+
+/** Splits an explicit corner list into two path halves at its length midpoint. */
+export function splitPolyline(pts: Point[]): PathHalves {
+  const { first, second } = splitPolylinePoints(pts)
+  return { first: polylinePath(first), second: polylinePath(second) }
 }
 
 /** Splits the orthogonal polyline into two halves at its length midpoint. */

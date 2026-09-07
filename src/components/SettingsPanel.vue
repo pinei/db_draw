@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
 import { useAuthStore } from '../stores/auth'
+import { downloadDiagram, type DiagramExportFormat } from '../utils/diagramExport'
 import type { ConnectorStyle, NotationStyle, ThemeMode } from '../model/types'
 
 const store = useDiagramStore()
 const auth = useAuthStore()
 const layout = computed(() => store.layout)
+const exporting = ref(false)
+const exportMessage = ref('')
 
 const connectorOptions: { value: ConnectorStyle; label: string }[] = [
   { value: 'curved',      label: 'Curved' },
@@ -24,6 +27,23 @@ const themeOptions: { value: ThemeMode; label: string }[] = [
   { value: 'dark',   label: 'Dark'   },
   { value: 'system', label: 'System' },
 ]
+
+async function exportDiagram(format: DiagramExportFormat) {
+  if (exporting.value) return
+  exporting.value = true
+  exportMessage.value = ''
+  try {
+    const base = store.state.meta.name || store.state.meta.id || store.currentModelId
+    await downloadDiagram(format, {
+      filenameBase: base,
+      entityPositions: store.state.entityPositions,
+    })
+  } catch (e) {
+    exportMessage.value = e instanceof Error ? e.message : 'Export failed'
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <template>
@@ -80,6 +100,17 @@ const themeOptions: { value: ThemeMode; label: string }[] = [
         <button class="btn" @click="store.setCanvasScale(1)">Reset</button>
         <button class="btn" @click="store.setCanvasScale(layout.canvasScale + 0.1)">+</button>
       </div>
+    </div>
+
+    <div class="divider" />
+
+    <div class="panel-section">
+      <span class="section-label">Export</span>
+      <div class="btn-group">
+        <button class="btn" :disabled="exporting" @click="exportDiagram('png')">PNG</button>
+        <button class="btn" :disabled="exporting" @click="exportDiagram('svg')">SVG</button>
+      </div>
+      <div v-if="exportMessage" class="export-error">{{ exportMessage }}</div>
     </div>
 
     <div class="divider" />
@@ -150,6 +181,12 @@ const themeOptions: { value: ThemeMode; label: string }[] = [
   gap: 4px;
 }
 
+.export-error {
+  font-size: 10px;
+  color: #f87171;
+  line-height: 1.3;
+}
+
 .save-status {
   font-size: 10px;
   text-align: right;
@@ -175,8 +212,13 @@ const themeOptions: { value: ThemeMode; label: string }[] = [
   white-space: nowrap;
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   background: var(--c-btn-hover-bg);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .btn.active {

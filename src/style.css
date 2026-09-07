@@ -11,6 +11,7 @@ body, html, #app {
 
 /* ─── Design tokens (light theme) ───────────────────────────────────────── */
 :root {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
 
   /* Canvas */

@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
 import type { ErRelationship, EntityRect, ConnectorStyle, NotationStyle, Cardinality, LogicalCardinality } from '../model/types'
 import { getConnectionPoints, snapToEntityEdge, resolveLabelPosition, minMaxLabelPosition, selfLoopPoints } from '../utils/connectionPoints'
-import { bezierPath, orthogonalPath, roundedPolylinePath, selfLoopCorners, splitBezierPath, splitOrthogonalPath, splitPolyline, SELF_LOOP_CORNER_RADIUS } from '../utils/connectorPath'
+import { bezierPath, orthogonalPath, polylinePath, roundedPolylinePath, selfLoopCorners, splitBezierPath, splitOrthogonalPath, splitPolyline, splitPolylinePoints, SELF_LOOP_CORNER_RADIUS } from '../utils/connectorPath'
 
 const props = defineProps<{
   relationship: ErRelationship
@@ -25,13 +25,16 @@ const geometry = computed(() => {
   return getConnectionPoints(props.fromRect, props.toRect, customPoints)
 })
 
-// Self-loops always render as a rounded loop outside the card, in both
-// connector styles (a plain bezier between the loop points would sag into
-// tall cards; the explicit outside route is provably clear)
+// Self-loops use an explicit outside route (a plain bezier between the loop
+// points would sag into tall cards). Curved → rounded corners; Orthogonal →
+// sharp 90° — same style switch as normal connectors, independent of notation.
 const pathData = computed(() => {
   const { source, target } = geometry.value
   if (isSelfLoop.value) {
-    return roundedPolylinePath(selfLoopCorners(source, target), SELF_LOOP_CORNER_RADIUS)
+    const corners = selfLoopCorners(source, target)
+    return props.connectorStyle === 'curved'
+      ? roundedPolylinePath(corners, SELF_LOOP_CORNER_RADIUS)
+      : polylinePath(corners)
   }
   return props.connectorStyle === 'curved'
     ? bezierPath(source, target)
@@ -51,9 +54,17 @@ const isBarker = computed(() => props.notationStyle === 'barker')
 const barkerHalves = computed(() => {
   if (!isBarker.value) return null
   const { source, target } = geometry.value
-  // Halves are computed on the sharp corners (the junction sits mid-loop with
-  // no marker, so the few-px difference to the rounded render is invisible)
-  if (isSelfLoop.value) return splitPolyline(selfLoopCorners(source, target))
+  if (isSelfLoop.value) {
+    const corners = selfLoopCorners(source, target)
+    if (props.connectorStyle === 'curved') {
+      const { first, second } = splitPolylinePoints(corners)
+      return {
+        first: roundedPolylinePath(first, SELF_LOOP_CORNER_RADIUS),
+        second: roundedPolylinePath(second, SELF_LOOP_CORNER_RADIUS),
+      }
+    }
+    return splitPolyline(corners)
+  }
   return props.connectorStyle === 'curved'
     ? splitBezierPath(source, target)
     : splitOrthogonalPath(source, target)
@@ -243,6 +254,9 @@ function onHandleMouseDown(endpoint: 'from' | 'to', e: MouseEvent) {
 }
 
 .connector-label {
+  /* Explicit stack — SVG-as-image export has no <body> to inherit from
+     (browser default would be serif / Times and look wrong vs the live canvas) */
+  font-family: var(--font-sans);
   font-size: 11px;
   fill: var(--c-connector-label);
   pointer-events: auto;
