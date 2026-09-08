@@ -3,8 +3,8 @@ import { ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
-const email = ref(auth.loginDraft?.email || auth.email || '')
-const token = ref(auth.loginDraft?.token ?? '')
+const email = ref(auth.email || '')
+const token = ref('')
 const busy = ref(false)
 const message = ref('')
 const messageKind = ref<'info' | 'error'>('info')

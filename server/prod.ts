@@ -37,6 +37,7 @@ const env = {
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   MAIL_FROM: process.env.MAIL_FROM,
   SITE_URL: process.env.SITE_URL,
+  COOKIE_SECURE: process.env.COOKIE_SECURE,
 }
 
 const port = Number(process.env.PORT) || 3000

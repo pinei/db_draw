@@ -3,34 +3,38 @@ import { ref, computed } from 'vue'
 import {
   requestToken as fetchToken,
   loginRequest,
+  fetchMe,
+  logoutRequest,
   loadUserPrefs,
   saveCodePanelSize as putCodePanelSize,
   AuthError,
   type CodePanelSize,
 } from '../utils/authApi'
 
-const EMAIL_KEY = 'dbdraw.auth.email'
-const TOKEN_KEY = 'dbdraw.auth.token'
+const LEGACY_EMAIL_KEY = 'dbdraw.auth.email'
+const LEGACY_TOKEN_KEY = 'dbdraw.auth.token'
+
+function clearLegacyStorage() {
+  try {
+    localStorage.removeItem(LEGACY_EMAIL_KEY)
+    localStorage.removeItem(LEGACY_TOKEN_KEY)
+  } catch { /* non-browser */ }
+}
 
 export const useAuthStore = defineStore('auth', () => {
-  // Session restored from localStorage so reloads keep the user logged in
-  const email = ref<string | null>(localStorage.getItem(EMAIL_KEY))
-  const token = ref<string | null>(localStorage.getItem(TOKEN_KEY))
+  const email = ref<string | null>(null)
+  const restoring = ref(true)
 
-  // Last model from the server (authoritative on fresh login; the diagram
-  // store's remembered id covers reloads in the same browser)
   const lastModelId = ref<string | null>(null)
-
-  // Diagram Code panel size from user.json (login or prefs fetch)
   const codePanelSize = ref<CodePanelSize | null>(null)
 
-  // Prefill for the login form after a failed magic-link attempt
-  const loginDraft = ref<{ email: string; token: string } | null>(null)
+  const isAuthenticated = computed(() => !!email.value)
 
-  const isAuthenticated = computed(() => !!email.value && !!token.value)
-
-  function setLoginDraft(next: { email: string; token: string } | null) {
-    loginDraft.value = next
+  function applySession(result: { email: string; lastModelId: string | null; codePanelSize: CodePanelSize | null }) {
+    email.value = result.email
+    lastModelId.value = result.lastModelId
+    codePanelSize.value = result.codePanelSize
+    clearLegacyStorage()
   }
 
   /** Asks the server to (re)generate a token and email it to the user. */
@@ -40,55 +44,63 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(inputEmail: string, inputToken: string): Promise<void> {
     const result = await loginRequest(inputEmail.trim(), inputToken.trim())
-    email.value = result.email
-    token.value = inputToken.trim()
-    lastModelId.value = result.lastModelId
-    codePanelSize.value = result.codePanelSize
-    localStorage.setItem(EMAIL_KEY, result.email)
-    localStorage.setItem(TOKEN_KEY, inputToken.trim())
+    applySession(result)
   }
 
-  /** Pull prefs from user.json when the session was restored without a login call. */
-  async function restorePrefs(): Promise<void> {
-    if (!email.value || !token.value) return
+  /** Cookie session on boot — 401 means landing, not an error banner. */
+  async function restoreSession(): Promise<void> {
+    restoring.value = true
+    clearLegacyStorage()
     try {
-      const prefs = await loadUserPrefs(email.value, token.value)
+      applySession(await fetchMe())
+    } catch {
+      email.value = null
+      lastModelId.value = null
+      codePanelSize.value = null
+    } finally {
+      restoring.value = false
+    }
+  }
+
+  /** Pull prefs from user.json when the editor mounts. */
+  async function restorePrefs(): Promise<void> {
+    if (!email.value) return
+    try {
+      const prefs = await loadUserPrefs()
       if (prefs.lastModelId) lastModelId.value = prefs.lastModelId
       codePanelSize.value = prefs.codePanelSize
     } catch (e) {
-      if (e instanceof AuthError) logout()
+      if (e instanceof AuthError) void logout()
     }
   }
 
   async function persistCodePanelSize(size: CodePanelSize): Promise<void> {
     codePanelSize.value = size
-    if (!email.value || !token.value) return
+    if (!email.value) return
     try {
-      await putCodePanelSize(email.value, token.value, size)
+      await putCodePanelSize(size)
     } catch (e) {
-      if (e instanceof AuthError) logout()
+      if (e instanceof AuthError) void logout()
     }
   }
 
-  function logout() {
+  async function logout() {
+    await logoutRequest()
     email.value = null
-    token.value = null
     lastModelId.value = null
     codePanelSize.value = null
-    localStorage.removeItem(EMAIL_KEY)
-    localStorage.removeItem(TOKEN_KEY)
+    clearLegacyStorage()
   }
 
   return {
     email,
-    token,
+    restoring,
     isAuthenticated,
     lastModelId,
     codePanelSize,
-    loginDraft,
-    setLoginDraft,
     generateToken,
     login,
+    restoreSession,
     restorePrefs,
     persistCodePanelSize,
     logout,

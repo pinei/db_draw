@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs'
 import { join, relative, isAbsolute } from 'node:path'
-import { timingSafeEqual } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 
 export interface CodePanelSize {
   width: number
@@ -9,7 +9,12 @@ export interface CodePanelSize {
 
 export interface UserRecord {
   email: string
-  token: string
+  /** Legacy plaintext login token — accepted until the next generate. */
+  token?: string
+  /** sha256 hex of the long-lived pasteable login token. */
+  tokenHash?: string
+  magicTicketHash?: string
+  magicTicketExpiresAt?: string
   createdAt: string
   lastLoginAt?: string
   lastLoginIp?: string
@@ -18,6 +23,18 @@ export interface UserRecord {
   lastModelId?: string
   /** Last user-resized Diagram Code panel size (pixels). */
   codePanelSize?: CodePanelSize
+}
+
+export function hashSecret(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex')
+}
+
+export function hashedSecretsEqual(provided: string, storedHex: string): boolean {
+  if (!/^[0-9a-f]{64}$/i.test(storedHex)) return false
+  const a = Buffer.from(hashSecret(provided), 'hex')
+  const b = Buffer.from(storedHex, 'hex')
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
 }
 
 /** Clamp and validate a code-panel size from client/user.json. */
@@ -65,9 +82,15 @@ export function authenticate(dataDir: string, email: string, token: string): str
   try {
     const record = JSON.parse(readFileSync(file, 'utf-8')) as UserRecord
     if (record.email !== parsed.email) return null
-    const a = Buffer.from(token)
-    const b = Buffer.from(record.token)
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return null
+    if (typeof record.tokenHash === 'string' && record.tokenHash) {
+      if (!hashedSecretsEqual(token, record.tokenHash)) return null
+    } else if (typeof record.token === 'string' && record.token) {
+      const a = Buffer.from(token)
+      const b = Buffer.from(record.token)
+      if (a.length !== b.length || !timingSafeEqual(a, b)) return null
+    } else {
+      return null
+    }
     return dir
   } catch {
     return null

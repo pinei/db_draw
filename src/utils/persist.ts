@@ -2,17 +2,12 @@ import type { DiagramState, PersistedDiagramState, ModelMeta, ModelSummary } fro
 import { generateDbml, generateMermaid } from './codePlaceholder'
 import { compileDbml } from './dbmlImport'
 import { sanitizeTags } from './modelMeta'
-import { useAuthStore } from '../stores/auth'
 import { AuthError } from './authApi'
 
 export { AuthError }
 
 const BASE = '/api/models'
-
-function authHeaders(): Record<string, string> {
-  const auth = useAuthStore()
-  return { 'X-User-Email': auth.email ?? '', 'X-Auth-Token': auth.token ?? '' }
-}
+const CREDS: RequestInit = { credentials: 'include' }
 
 // Validation summary for the Apply button — single compile path shared with
 // the import (compileDbml); the actual diagram patch happens in the store.
@@ -31,7 +26,7 @@ export function validateDbml(text: string): { success: boolean; message: string 
 export async function listModels(): Promise<ModelSummary[]> {
   let res: Response
   try {
-    res = await fetch(BASE, { headers: authHeaders() })
+    res = await fetch(BASE, CREDS)
   } catch {
     throw new Error('Server unavailable — run npm run dev')
   }
@@ -60,7 +55,7 @@ export async function listModels(): Promise<ModelSummary[]> {
 }
 
 export async function loadModel(name: string): Promise<PersistedDiagramState | null> {
-  const res = await fetch(`${BASE}/${name}`, { headers: authHeaders() })
+  const res = await fetch(`${BASE}/${name}`, CREDS)
   if (res.status === 401) throw new AuthError()
   if (res.status === 404) return null
   if (!res.ok) throw new Error(`Failed to load model "${name}": ${res.status}`)
@@ -84,7 +79,8 @@ export async function saveModel(name: string, state: DiagramState): Promise<void
   }
   const res = await fetch(`${BASE}/${name}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
   if (res.status === 401) throw new AuthError()

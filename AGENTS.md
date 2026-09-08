@@ -26,7 +26,7 @@ Não há lint nem teste automatizado configurado. O typecheck é feito pelo `vue
 ```
 src/
   main.ts                     # bootstrap: createApp + Pinia + mount
-  App.vue                     # gate: landing vs EditorApp (async); magic-link login
+  App.vue                     # gate: landing vs EditorApp; cookie session via GET /auth/me
   EditorApp.vue               # canvas + painéis; carrega/semeia estado após auth
   style.css                   # CSS global + variáveis (--c-*)
   model/
@@ -35,9 +35,9 @@ src/
     landingSample.ts          # 4 tabelas + posições do preview da landing
   stores/
     diagram.ts                # Pinia store: estado central, getters, actions, auto-save debounced
-    auth.ts                   # sessão do usuário (email/token em localStorage) + login/logout
+    auth.ts                   # sessão (email em memória; cookie HttpOnly) + login/logout
   utils/
-    authApi.ts                # POST /api/auth (leve — a landing não puxa persist/DBML)
+    authApi.ts                # POST /api/auth (leve — a landing não puxa persist/DBML); credentials: include
     persist.ts                # load/save via API local + validação de DBML (@dbml/parse)
     codePlaceholder.ts        # serializers DBML e Mermaid a partir de ErSchema
     connectionPoints.ts       # geometria de pontos de conexão, snap em arestas, posição de labels
@@ -58,6 +58,7 @@ src/
     LoginPanel.vue            # card de login (e-mail + token, gerar token)
 server/
   app.ts                      # Express: /api/auth + /api/models (Vite e produção)
+  session.ts                  # cookie dbdraw_sid + índice data/sessions + tickets mágicos
   store.ts                    # filesystem de user.json e modelos
   tokenEmail.ts               # e-mail de token via Resend
   prod.ts                     # npm start — estáticos + API em 127.0.0.1:3000
@@ -65,8 +66,10 @@ deploy/Caddyfile              # reverse proxy Caddy → Express
 vite.config.ts                # monta o router Express em /api no dev server
 data/
   user/<dominio>/<nome>/      # NÃO versionado (ver .gitignore)
-    user.json                 # { email, token, createdAt, lastLoginAt, …, loginCount, lastModelId, codePanelSize? }
+    user.json                 # { email, tokenHash, createdAt, lastLoginAt, …, loginCount, lastModelId, codePanelSize? }
     models/<nome>/            # um .json/.dbml/.mermaid por modelo (hoje só "default")
+  sessions/<hh>/<sidHash>.json  # índice de sessões (cookie HttpOnly)
+  tickets/<hh>/<ticketHash>.json
 docs/                         # imagens/assets de documentação
 ```
 
@@ -89,7 +92,7 @@ Regras importantes:
 ## Como as coisas funcionam
 
 ### Autenticação multiusuário (dev apenas)
-Login com e-mail + token via `LoginPanel.vue` na landing (`LandingPage.vue`; sessão em `localStorage`, store `auth.ts`). O editor (`EditorApp.vue`) é `import()` depois do login — a landing não puxa `persist` / `@dbml/parse` / `html2canvas`. Logout desmonta o editor, que chama `resetState()` no `onUnmounted` (estado é global e sem dono — sem isso o próximo login herdaria o diagrama em memória e o seed de 404 o persistiria na pasta do novo usuário). Seed de primeiro login usa `resetState()` + `saveModel` (defaults pristinos, nunca o estado corrente). Auto-save não dispara deslogado. Endpoints em `server/app.ts` (Vite monta o mesmo router; `npm start` serve `dist/` + API): `POST /api/auth/token {email}` (gera token, grava `user.json` preservando meta anterior, envia o token por e-mail via Resend — `RESEND_API_KEY` em `.env`), `POST /api/auth/login {email, token}` (compara com `timingSafeEqual`; devolve `lastModelId` + `codePanelSize`), `GET/PUT /api/auth/prefs` (prefs de UI no `user.json`, autenticado — o editor chama GET no mount quando a sessão veio do `localStorage`). Link mágico `/?email=&token=` (no e-mail) faz login automático no `App.vue` e remove os params da URL. E-mail vira pasta `data/user/<dominio>/<nome>` (lowercase, validado contra path traversal). `GET/PUT /api/models/:name` exigem headers `X-User-Email`/`X-Auth-Token` e operam em `data/user/.../models/:name/`; `GET /api/models` (sem nome) lista `[{id, meta}]` (meta best-effort, null se ausente); 401 vira `AuthError` e desloga. Modelo atual = `currentModelId` na store (fora do artefato, lembrado em `localStorage`); trocar/criar faz `flushSave()` antes para não perder a janela do debounce. Tokens em plaintext, sem expiração. `user.json` guarda também `lastModelId` (atualizado a cada GET/PUT de modelo, best-effort) e `codePanelSize {width,height}` (resize do Diagram Code, best-effort via PUT prefs); o login/`restorePrefs` devolvem e o `EditorApp`/`CodePanel` aplicam (hint do servidor vence o `localStorage` do modelo, que cobre só reloads).
+Login com e-mail + token colável via `LoginPanel.vue` na landing. A sessão vive num cookie HttpOnly `dbdraw_sid` (7 dias, `SameSite=Lax`, `Secure` em HTTPS; o JS nunca lê o sid). O editor (`EditorApp.vue`) é `import()` depois do login — a landing não puxa `persist` / `@dbml/parse` / `html2canvas`. Boot: `GET /api/auth/me` com `credentials: 'include'`; 401 → landing. Logout chama `POST /api/auth/logout` (revoga o sid), desmonta o editor (`resetState()` no `onUnmounted`). Seed de primeiro login usa `resetState()` + `saveModel`. Auto-save não dispara deslogado. Endpoints: `POST /api/auth/token {email}` (gera token longo hashed em `user.json` + ticket mágico single-use 30 min, e-mail via Resend), `POST /api/auth/login {email, token}` (compara hash/`timingSafeEqual`, `Set-Cookie`, devolve `lastModelId` + `codePanelSize`), `GET /api/auth/magic?ticket=` (consome ticket, cookie, 302 `/`), `GET /api/auth/me`, `POST /api/auth/logout`, `GET/PUT /api/auth/prefs`. Mutações `/api` exigem Origin na allowlist (`SITE_URL` + Host) e rejeitam `Sec-Fetch-Site: cross-site`. E-mail vira pasta `data/user/<dominio>/<nome>`. `GET/PUT /api/models` usam o cookie (não headers). 401 vira `AuthError` e desloga. Sid hashed em `data/sessions/<hh>/<hash>.json`; tickets em `data/tickets/`. Token plaintext legado em `user.json` ainda autentica até o próximo Generate. `lastModelId` / `codePanelSize` como antes.
 
 ### Persistência (dev apenas)
 A persistência é o router Express em `server/app.ts` (`GET/PUT /api/models/:name`, autenticado) e grava em `data/user/.../models/:name/` (`.json`, `.dbml`, `.mermaid`). Em dev o Vite monta o mesmo router; em produção `npm start` serve `dist/` + API. Sem o servidor (`vite preview` ou arquivo estático) o app roda em memória silenciosamente (`EditorApp.vue` usa try/catch). Primeiro login sem modelo → 404 → `EditorApp.vue` semeia do `sampleData` em memória.

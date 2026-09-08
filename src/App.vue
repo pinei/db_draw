@@ -16,33 +16,10 @@ function applyLandingTheme() {
   )
 }
 
-function takeMagicLink(): { email: string; token: string } | null {
-  const params = new URLSearchParams(window.location.search)
-  const email = params.get('email')?.trim() ?? ''
-  const token = params.get('token')?.trim() ?? ''
-  if (!email && !token) return null
-  const url = new URL(window.location.href)
-  url.searchParams.delete('email')
-  url.searchParams.delete('token')
-  const next = url.pathname + url.search + url.hash
-  history.replaceState({}, document.title, next)
-  if (!email || !token) return null
-  return { email, token }
-}
-
 onMounted(async () => {
   applyLandingTheme()
   systemMedia.addEventListener('change', applyLandingTheme)
-
-  const magic = takeMagicLink()
-  if (magic) {
-    try {
-      await auth.login(magic.email, magic.token)
-      auth.setLoginDraft(null)
-    } catch {
-      auth.setLoginDraft(magic)
-    }
-  }
+  await auth.restoreSession()
 })
 
 onUnmounted(() => {
@@ -56,5 +33,5 @@ watch(() => auth.isAuthenticated, (ok) => {
 
 <template>
   <EditorApp v-if="auth.isAuthenticated" />
-  <LandingPage v-else />
+  <LandingPage v-else-if="!auth.restoring" />
 </template>

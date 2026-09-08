@@ -10,6 +10,7 @@ export interface TokenMailEnv {
   RESEND_API_KEY?: string
   MAIL_FROM?: string
   SITE_URL?: string
+  COOKIE_SECURE?: string
 }
 
 function escapeHtml(value: string): string {
@@ -20,10 +21,9 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function magicLoginUrl(siteUrl: string, email: string, token: string): string {
-  const url = new URL('/', siteUrl)
-  url.searchParams.set('email', email)
-  url.searchParams.set('token', token)
+function magicLoginUrl(siteUrl: string, ticket: string): string {
+  const url = new URL('/api/auth/magic', siteUrl)
+  url.searchParams.set('ticket', ticket)
   return url.toString()
 }
 
@@ -55,7 +55,8 @@ function buildHtml(opts: { email: string; token: string; signInUrl: string }): s
           <tr>
             <td style="padding:12px 28px 0;font-size:14px;line-height:1.55;color:#374151;">
               A new access token was generated for <strong>${email}</strong>.
-              Use the button below to sign in, or paste the token on the login screen.
+              Use the button below to sign in (link expires in 30 minutes),
+              or paste the token on the login screen — the token stays valid until you generate a new one.
             </td>
           </tr>
           <tr>
@@ -81,7 +82,7 @@ function buildHtml(opts: { email: string; token: string; signInUrl: string }): s
           <tr>
             <td style="padding:18px 28px 28px;font-size:12px;line-height:1.5;color:#6b7280;">
               This token replaces any previous one for this email.
-              If you did not request it, you can ignore this message.
+              The sign-in button is single-use. If you did not request it, you can ignore this message.
             </td>
           </tr>
         </table>
@@ -104,6 +105,7 @@ function buildText(opts: { email: string; token: string; signInUrl: string }): s
     `Token: ${opts.token}`,
     '',
     'This token replaces any previous one for this email.',
+    'The sign-in button is single-use and expires in 30 minutes.',
     'If you did not request it, you can ignore this message.',
     '',
     'https://www.dbdraw.io',
@@ -125,6 +127,7 @@ export async function sendTokenEmail(opts: {
   env: TokenMailEnv
   to: string
   token: string
+  ticket: string
   siteUrl: string
   logoPath: string
 }): Promise<{ ok: true } | { ok: false; message: string }> {
@@ -133,7 +136,7 @@ export async function sendTokenEmail(opts: {
     return { ok: false, message: 'Email is not configured — set RESEND_API_KEY in .env' }
   }
 
-  const signInUrl = magicLoginUrl(opts.siteUrl, opts.to, opts.token)
+  const signInUrl = magicLoginUrl(opts.siteUrl, opts.ticket)
   const logo = readFileSync(opts.logoPath)
   const resend = new Resend(apiKey)
   const result = await resend.emails.send({
