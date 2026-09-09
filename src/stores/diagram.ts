@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { DiagramState, PersistedDiagramState, ConnectorStyle, NotationStyle, CodeFormat, ThemeMode, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel } from '../model/types'
+import type { DiagramState, PersistedDiagramState, ConnectorStyle, NotationStyle, CodeFormat, ThemeMode, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel, DraggingRoute, RouteOverride } from '../model/types'
 import { bibliotecaSchema } from '../model/sampleData'
 import { saveModel, AuthError, listModels, loadModel } from '../utils/persist'
 import { compileDbml, buildDbmlPatch, type DbmlApplyStats, type DbmlIssueLine } from '../utils/dbmlImport'
@@ -97,7 +97,7 @@ function buildInitialPositions(): Record<string, EntityRect> {
 
 // Drop layout overrides that no longer match the schema (e.g. blank models
 // seeded before entityPositions were cleared on create).
-function pruneOrphanPresentation(state: Pick<DiagramState, 'schema' | 'entityPositions' | 'connectorPoints' | 'labelPositions'>) {
+function pruneOrphanPresentation(state: Pick<DiagramState, 'schema' | 'entityPositions' | 'connectorPoints' | 'labelPositions' | 'routeOverrides'>) {
   const entityIds = new Set(state.schema.entities.map((e) => e.id))
   for (const id of Object.keys(state.entityPositions)) {
     if (!entityIds.has(id)) delete state.entityPositions[id]
@@ -108,6 +108,9 @@ function pruneOrphanPresentation(state: Pick<DiagramState, 'schema' | 'entityPos
   }
   for (const id of Object.keys(state.labelPositions)) {
     if (!relIds.has(id)) delete state.labelPositions[id]
+  }
+  for (const id of Object.keys(state.routeOverrides)) {
+    if (!relIds.has(id)) delete state.routeOverrides[id]
   }
 }
 
@@ -130,6 +133,7 @@ function buildInitialState(): DiagramState {
     },
     connectorPoints: {},
     labelPositions: {},
+    routeOverrides: {},
   }
 }
 
@@ -144,6 +148,9 @@ export const useDiagramStore = defineStore('diagram', () => {
 
   // Track relationship label being dragged
   const draggingLabel = ref<DraggingLabel | null>(null)
+
+  // Track mid-route handle being dragged (orthogonal midOffset / curved bulge)
+  const draggingRoute = ref<DraggingRoute | null>(null)
 
   // Auto-save status exposed to the UI
   const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -261,6 +268,14 @@ export const useDiagramStore = defineStore('diagram', () => {
   }
 
   function endDraggingConnectorPoint() {
+    const drag = draggingConnectorPoint.value
+    if (drag) {
+      const current = state.value.connectorPoints[drag.relationshipId]?.[drag.endpoint]
+      // New edge ⇒ previous mid-route nudge no longer matches the path shape
+      if (current && current.side !== drag.startPoint.side) {
+        delete state.value.routeOverrides[drag.relationshipId]
+      }
+    }
     draggingConnectorPoint.value = null
   }
 
@@ -278,6 +293,53 @@ export const useDiagramStore = defineStore('diagram', () => {
 
   function endDraggingLabel() {
     draggingLabel.value = null
+  }
+
+  function setRouteOverride(
+    relationshipId: string,
+    style: ConnectorStyle,
+    value: number | { along?: number; bulge?: number } | null,
+  ) {
+    const existing = state.value.routeOverrides[relationshipId] ?? {}
+    const next: RouteOverride = { ...existing }
+    if (style === 'orthogonal') {
+      if (value === null || typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) < 1e-6) {
+        delete next.orthogonal
+      } else {
+        next.orthogonal = { midOffset: Math.max(-3, Math.min(3, value)) }
+      }
+    } else {
+      if (value === null || typeof value === 'number') {
+        // number alone is legacy bulge-only; null clears
+        if (value === null) {
+          delete next.curved
+        } else if (!Number.isFinite(value) || Math.abs(value) < 1e-6) {
+          delete next.curved
+        } else {
+          next.curved = { along: 0, bulge: Math.max(-3, Math.min(3, value)) }
+        }
+      } else {
+        const along = typeof value.along === 'number' && Number.isFinite(value.along) ? value.along : 0
+        const bulge = typeof value.bulge === 'number' && Number.isFinite(value.bulge) ? value.bulge : 0
+        const ca = Math.max(-3, Math.min(3, along))
+        const cb = Math.max(-3, Math.min(3, bulge))
+        if (Math.abs(ca) < 1e-6 && Math.abs(cb) < 1e-6) delete next.curved
+        else next.curved = { along: ca, bulge: cb }
+      }
+    }
+    if (!next.orthogonal && !next.curved) {
+      delete state.value.routeOverrides[relationshipId]
+    } else {
+      state.value.routeOverrides[relationshipId] = next
+    }
+  }
+
+  function startDraggingRoute(relationshipId: string) {
+    draggingRoute.value = { relationshipId }
+  }
+
+  function endDraggingRoute() {
+    draggingRoute.value = null
   }
 
   // DBML Apply: incremental sync — matched entities/relationships keep their
@@ -304,15 +366,18 @@ export const useDiagramStore = defineStore('diagram', () => {
 
     const connectorPoints = { ...state.value.connectorPoints }
     const labelPositions = { ...state.value.labelPositions }
+    const routeOverrides = { ...state.value.routeOverrides }
     for (const id of patch.removedRelIds) {
       delete connectorPoints[id]
       delete labelPositions[id]
+      delete routeOverrides[id]
     }
 
     state.value.schema = patch.schema
     state.value.entityPositions = positions
     state.value.connectorPoints = connectorPoints
     state.value.labelPositions = labelPositions
+    state.value.routeOverrides = routeOverrides
     return { success: true, stats: patch.stats }
   }
 
@@ -336,6 +401,7 @@ export const useDiagramStore = defineStore('diagram', () => {
     hoveredConnectorId.value = null
     draggingConnectorPoint.value = null
     draggingLabel.value = null
+    draggingRoute.value = null
     saveStatus.value = 'idle'
     currentModelId.value = 'default'
     try { localStorage.removeItem(MODEL_KEY) } catch { /* non-browser */ }
@@ -350,6 +416,7 @@ export const useDiagramStore = defineStore('diagram', () => {
       state.value.entityPositions = {}
       state.value.connectorPoints = {}
       state.value.labelPositions = {}
+      state.value.routeOverrides = {}
     }
     state.value.meta = {
       id,
@@ -370,19 +437,32 @@ export const useDiagramStore = defineStore('diagram', () => {
     const entityPositions = { ...loaded.entityPositions }
     const labelPositions = { ...loaded.labelPositions }
     const connectorPoints = { ...loaded.connectorPoints }
+    const routeOverrides = { ...(loaded.routeOverrides ?? {}) }
     for (const rel of loaded.schema.relationships) {
       if (rel.fromEntityId === rel.toEntityId) {
         delete labelPositions[rel.id]
         delete connectorPoints[rel.id]
+        delete routeOverrides[rel.id]
       }
     }
-    pruneOrphanPresentation({ schema: loaded.schema, entityPositions, connectorPoints, labelPositions })
+    // Backfill curved.along for artifacts saved before along existed
+    for (const id of Object.keys(routeOverrides)) {
+      const curved = routeOverrides[id]?.curved
+      if (curved && typeof curved.along !== 'number') {
+        routeOverrides[id] = {
+          ...routeOverrides[id],
+          curved: { along: 0, bulge: typeof curved.bulge === 'number' ? curved.bulge : 0 },
+        }
+      }
+    }
+    pruneOrphanPresentation({ schema: loaded.schema, entityPositions, connectorPoints, labelPositions, routeOverrides })
     state.value = {
       ...loaded,
       meta: defaultMeta(modelId, loaded.meta),
       entityPositions,
       labelPositions,
       connectorPoints,
+      routeOverrides,
       layout: {
         codeFormat: 'dbml',
         codePanelOpen: true,
@@ -516,6 +596,10 @@ export const useDiagramStore = defineStore('diagram', () => {
     setLabelPosition,
     startDraggingLabel,
     endDraggingLabel,
+    draggingRoute,
+    setRouteOverride,
+    startDraggingRoute,
+    endDraggingRoute,
     saveStatus,
     loadState,
     applyDbml,

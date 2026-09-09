@@ -122,3 +122,9 @@ body, html, #app {
 .connector-handle:active {
   cursor: grabbing;
 }
+
+.connector-route-handle {
+  fill: var(--c-panel-bg);
+  stroke: var(--c-connector-hover);
+  stroke-width: 1.5;
+}

@@ -24,17 +24,47 @@ interface Cubic {
   p3: Point
 }
 
-/** Control points for the smooth cubic bezier: they follow the outgoing tangent
- *  of each endpoint so the path always leaves/arrives perpendicular to the entity edge. */
-function cubicBezier(src: ConnectionPoint, tgt: ConnectionPoint): Cubic {
+/** Unit direction along the chord p0→p3. */
+function chordDir(p0: Point, p3: Point): Point {
+  const dx = p3.x - p0.x
+  const dy = p3.y - p0.y
+  const len = Math.hypot(dx, dy) || 1
+  return { x: dx / len, y: dy / len }
+}
+
+/** Unit perpendicular to the chord (rotated 90° CCW). */
+function chordPerp(p0: Point, p3: Point): Point {
+  const dir = chordDir(p0, p3)
+  return { x: -dir.y, y: dir.x }
+}
+
+function add(a: Point, b: Point, s = 1): Point {
+  return { x: a.x + b.x * s, y: a.y + b.y * s }
+}
+
+// Keep mid-route handles clear of crow's-foot / Barker glyphs (largest ~24px)
+const ROUTE_MID_MARGIN = 28
+
+/** Clamp a point so its chord projection stays between the endpoints (with marker margin). */
+function clampAlongChord(p0: Point, p3: Point, point: Point): Point {
+  const d = dist(p0, p3) || 1
+  const dir = chordDir(p0, p3)
+  const perp = chordPerp(p0, p3)
+  const tRaw = (point.x - p0.x) * dir.x + (point.y - p0.y) * dir.y
+  const b = (point.x - p0.x) * perp.x + (point.y - p0.y) * perp.y
+  const pad = ROUTE_MID_MARGIN
+  const t = d <= 2 * pad ? d / 2 : Math.max(pad, Math.min(d - pad, tRaw))
+  return { x: p0.x + dir.x * t + perp.x * b, y: p0.y + dir.y * t + perp.y * b }
+}
+
+/** Default cubic (tangents only) — no mid-route nudge. */
+function autoCubic(src: ConnectionPoint, tgt: ConnectionPoint): Cubic {
   const p0 = src.point
   const p3 = tgt.point
-  const d  = dist(p0, p3)
+  const d = dist(p0, p3)
   const offset = Math.max(40, d * BEZIER_TENSION)
-
   const t1 = tangent(src.side)
   const t2 = tangent(tgt.side)
-
   return {
     p0,
     c1: { x: p0.x + t1.x * offset, y: p0.y + t1.y * offset },
@@ -43,44 +73,169 @@ function cubicBezier(src: ConnectionPoint, tgt: ConnectionPoint): Cubic {
   }
 }
 
+/**
+ * Control points for the smooth cubic bezier.
+ * `along` / `bulge` are signed fractions of chord length that shift the curve
+ * mid relative to the automatic path (along the chord / perpendicular).
+ */
+function cubicBezier(
+  src: ConnectionPoint,
+  tgt: ConnectionPoint,
+  along = 0,
+  bulge = 0,
+): Cubic {
+  const auto = autoCubic(src, tgt)
+  if (along === 0 && bulge === 0) return auto
+
+  const d = dist(auto.p0, auto.p3) || 1
+  const dir = chordDir(auto.p0, auto.p3)
+  const perp = chordPerp(auto.p0, auto.p3)
+  const autoMid = cubicAt(auto, 0.5)
+  const desired = add(add(autoMid, dir, along * d), perp, bulge * d)
+  const target = clampAlongChord(auto.p0, auto.p3, desired)
+  const delta = { x: target.x - autoMid.x, y: target.y - autoMid.y }
+  return {
+    p0: auto.p0,
+    c1: add(auto.c1, delta),
+    c2: add(auto.c2, delta),
+    p3: auto.p3,
+  }
+}
+
+/** Point on a cubic bezier at parameter t (De Casteljau). */
+function cubicAt(c: Cubic, t: number): Point {
+  const a = add(c.p0, add(c.c1, c.p0, -1), t)
+  const b = add(c.c1, add(c.c2, c.c1, -1), t)
+  const d = add(c.c2, add(c.p3, c.c2, -1), t)
+  const e = add(a, add(b, a, -1), t)
+  const f = add(b, add(d, b, -1), t)
+  return add(e, add(f, e, -1), t)
+}
+
+export interface CurvedNudge {
+  along: number
+  bulge: number
+}
+
 /** Smooth cubic bezier path. */
-export function bezierPath(src: ConnectionPoint, tgt: ConnectionPoint): string {
-  const { p0, c1, c2, p3 } = cubicBezier(src, tgt)
+export function bezierPath(src: ConnectionPoint, tgt: ConnectionPoint, nudge: CurvedNudge | number = 0): string {
+  const { along, bulge } = normalizeCurvedNudge(nudge)
+  const { p0, c1, c2, p3 } = cubicBezier(src, tgt, along, bulge)
   return `M ${p0.x} ${p0.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p3.x} ${p3.y}`
 }
 
-/**
- * Orthogonal (Manhattan) path with exactly two 90° bends.
- * Routing strategy:
- *   - horizontal exit/entry sides (left/right): route via a vertical midpoint
- *   - vertical exit/entry sides (top/bottom): route via a horizontal midpoint
- *   - mixed sides: step to a corner then go straight
- */
-/** Corner points of the orthogonal (Manhattan) route (see strategy below). */
-function orthogonalCorners(src: ConnectionPoint, tgt: ConnectionPoint): Point[] {
+/** Mid-curve handle for curved route dragging. */
+export function bezierHandlePoint(src: ConnectionPoint, tgt: ConnectionPoint, nudge: CurvedNudge | number = 0): Point {
+  const { along, bulge } = normalizeCurvedNudge(nudge)
+  return cubicAt(cubicBezier(src, tgt, along, bulge), 0.5)
+}
+
+/** Map a pointer to curved along+bulge (fractions of chord), clamped between endpoints. */
+export function curvedNudgeFromPoint(src: ConnectionPoint, tgt: ConnectionPoint, mouse: Point): CurvedNudge {
+  const p0 = src.point
+  const p3 = tgt.point
+  const d = dist(p0, p3) || 1
+  const dir = chordDir(p0, p3)
+  const perp = chordPerp(p0, p3)
+  const autoMid = cubicAt(autoCubic(src, tgt), 0.5)
+  const clamped = clampAlongChord(p0, p3, mouse)
+  const dx = clamped.x - autoMid.x
+  const dy = clamped.y - autoMid.y
+  return {
+    along: (dx * dir.x + dy * dir.y) / d,
+    bulge: (dx * perp.x + dy * perp.y) / d,
+  }
+}
+
+function normalizeCurvedNudge(nudge: CurvedNudge | number): CurvedNudge {
+  if (typeof nudge === 'number') return { along: 0, bulge: nudge }
+  return {
+    along: typeof nudge.along === 'number' ? nudge.along : 0,
+    bulge: typeof nudge.bulge === 'number' ? nudge.bulge : 0,
+  }
+}
+
+type OrthoKind = 'hh' | 'vv' | 'hv' | 'vh'
+
+function orthoKind(src: ConnectionPoint, tgt: ConnectionPoint): OrthoKind {
+  const isH1 = src.side === 'left' || src.side === 'right'
+  const isH2 = tgt.side === 'left' || tgt.side === 'right'
+  if (isH1 && isH2) return 'hh'
+  if (!isH1 && !isH2) return 'vv'
+  return isH1 ? 'hv' : 'vh'
+}
+
+function orthoSpan(src: ConnectionPoint, tgt: ConnectionPoint, kind: OrthoKind): number {
   const p1 = src.point
   const p2 = tgt.point
-  const s1 = src.side
-  const s2 = tgt.side
+  if (kind === 'hh' || kind === 'hv') return Math.max(Math.abs(p2.x - p1.x), 40)
+  return Math.max(Math.abs(p2.y - p1.y), 40)
+}
 
-  const isH1 = s1 === 'left' || s1 === 'right'
-  const isH2 = s2 === 'left' || s2 === 'right'
+// Keep the mid channel clear of crow's-foot / Barker glyphs (largest ~24px)
+const ORTHO_MID_MARGIN = ROUTE_MID_MARGIN
 
-  if (isH1 && isH2) {
-    // Both horizontal — meet at vertical midpoint
-    const midX = (p1.x + p2.x) / 2
-    return [p1, { x: midX, y: p1.y }, { x: midX, y: p2.y }, p2]
-  } else if (!isH1 && !isH2) {
-    // Both vertical — meet at horizontal midpoint
-    const midY = (p1.y + p2.y) / 2
-    return [p1, { x: p1.x, y: midY }, { x: p2.x, y: midY }, p2]
-  } else if (isH1 && !isH2) {
-    // Source horizontal, target vertical — elbow at (p2.x, p1.y)
-    return [p1, { x: p2.x, y: p1.y }, p2]
-  } else {
-    // Source vertical, target horizontal — elbow at (p1.x, p2.y)
-    return [p1, { x: p1.x, y: p2.y }, p2]
+/** Clamp mid coordinate so the channel stays between the endpoints, with marker clearance. */
+function clampOrthoMid(a: number, b: number, proposed: number): number {
+  const lo = Math.min(a, b)
+  const hi = Math.max(a, b)
+  const pad = ORTHO_MID_MARGIN
+  if (hi - lo <= 2 * pad) return (a + b) / 2
+  return Math.max(lo + pad, Math.min(hi - pad, proposed))
+}
+
+/** Absolute mid-channel position after clamping (HH → x, VV → y). */
+function clampedOrthoMidCoord(
+  src: ConnectionPoint,
+  tgt: ConnectionPoint,
+  kind: 'hh' | 'vv',
+  midOffset: number,
+): number {
+  const p1 = src.point
+  const p2 = tgt.point
+  const span = orthoSpan(src, tgt, kind)
+  if (kind === 'hh') {
+    return clampOrthoMid(p1.x, p2.x, (p1.x + p2.x) / 2 + midOffset * span)
   }
+  return clampOrthoMid(p1.y, p2.y, (p1.y + p2.y) / 2 + midOffset * span)
+}
+
+/**
+ * Orthogonal (Manhattan) path with one or two 90° bends.
+ * `midOffset` only applies to HH/VV (slides the mid channel). Mixed HV/VH
+ * stay as a single elbow — nudging them into two bends is not offered.
+ * The mid channel is always clamped between the endpoints (with margin for markers).
+ */
+/** Corner points of the orthogonal (Manhattan) route (see strategy above). */
+export function orthogonalCorners(src: ConnectionPoint, tgt: ConnectionPoint, midOffset = 0): Point[] {
+  const p1 = src.point
+  const p2 = tgt.point
+  const kind = orthoKind(src, tgt)
+
+  if (kind === 'hh') {
+    const midX = clampedOrthoMidCoord(src, tgt, 'hh', midOffset)
+    return [p1, { x: midX, y: p1.y }, { x: midX, y: p2.y }, p2]
+  }
+  if (kind === 'vv') {
+    const midY = clampedOrthoMidCoord(src, tgt, 'vv', midOffset)
+    return [p1, { x: p1.x, y: midY }, { x: p2.x, y: midY }, p2]
+  }
+  if (kind === 'hv') {
+    // Source horizontal, target vertical — single elbow at (p2.x, p1.y)
+    return [p1, { x: p2.x, y: p1.y }, p2]
+  }
+  // Source vertical, target horizontal — single elbow at (p1.x, p2.y)
+  return [p1, { x: p1.x, y: p2.y }, p2]
+}
+
+/** True when Orthogonal mid-route drag applies (two-bend HH/VV with room to slide). */
+export function orthogonalRouteEditable(src: ConnectionPoint, tgt: ConnectionPoint): boolean {
+  const kind = orthoKind(src, tgt)
+  if (kind !== 'hh' && kind !== 'vv') return false
+  const p1 = src.point
+  const p2 = tgt.point
+  const gap = kind === 'hh' ? Math.abs(p2.x - p1.x) : Math.abs(p2.y - p1.y)
+  return gap > 2 * ORTHO_MID_MARGIN
 }
 
 /** Path from an explicit corner list (same format as orthogonalPath). */
@@ -88,8 +243,35 @@ export function polylinePath(corners: Point[]): string {
   return 'M ' + corners.map((p) => `${p.x} ${p.y}`).join(' L ')
 }
 
-export function orthogonalPath(src: ConnectionPoint, tgt: ConnectionPoint): string {
-  return polylinePath(orthogonalCorners(src, tgt))
+export function orthogonalPath(src: ConnectionPoint, tgt: ConnectionPoint, midOffset = 0): string {
+  const kind = orthoKind(src, tgt)
+  const effective = (kind === 'hh' || kind === 'vv') ? midOffset : 0
+  return polylinePath(orthogonalCorners(src, tgt, effective))
+}
+
+/** Mid-route handle for orthogonal dragging; null when the route is a single elbow. */
+export function orthogonalHandlePoint(src: ConnectionPoint, tgt: ConnectionPoint, midOffset = 0): Point | null {
+  if (!orthogonalRouteEditable(src, tgt)) return null
+  const corners = orthogonalCorners(src, tgt, midOffset)
+  return {
+    x: (corners[1].x + corners[2].x) / 2,
+    y: (corners[1].y + corners[2].y) / 2,
+  }
+}
+
+/** Map a pointer position to an orthogonal midOffset (HH/VV only; else 0). Clamped between endpoints. */
+export function midOffsetFromPoint(src: ConnectionPoint, tgt: ConnectionPoint, mouse: Point): number {
+  const p1 = src.point
+  const p2 = tgt.point
+  const kind = orthoKind(src, tgt)
+  if (kind !== 'hh' && kind !== 'vv') return 0
+  const span = orthoSpan(src, tgt, kind)
+  if (kind === 'hh') {
+    const midX = clampOrthoMid(p1.x, p2.x, mouse.x)
+    return (midX - (p1.x + p2.x) / 2) / span
+  }
+  const midY = clampOrthoMid(p1.y, p2.y, mouse.y)
+  return (midY - (p1.y + p2.y) / 2) / span
 }
 
 /**
@@ -316,8 +498,9 @@ function polylineLength(pts: Point[]): number {
 }
 
 /** Splits the cubic bezier into two halves at its midpoint (De Casteljau, t = 0.5). */
-export function splitBezierPath(src: ConnectionPoint, tgt: ConnectionPoint): PathHalves {
-  const { p0, c1, c2, p3 } = cubicBezier(src, tgt)
+export function splitBezierPath(src: ConnectionPoint, tgt: ConnectionPoint, nudge: CurvedNudge | number = 0): PathHalves {
+  const { along, bulge } = normalizeCurvedNudge(nudge)
+  const { p0, c1, c2, p3 } = cubicBezier(src, tgt, along, bulge)
   const m1 = mid(p0, c1)
   const m2 = mid(c1, c2)
   const m3 = mid(c2, p3)
@@ -364,6 +547,7 @@ export function splitPolyline(pts: Point[]): PathHalves {
 }
 
 /** Splits the orthogonal polyline into two halves at its length midpoint. */
-export function splitOrthogonalPath(src: ConnectionPoint, tgt: ConnectionPoint): PathHalves {
-  return splitPolyline(orthogonalCorners(src, tgt))
+export function splitOrthogonalPath(src: ConnectionPoint, tgt: ConnectionPoint, midOffset = 0): PathHalves {
+  const offset = orthogonalRouteEditable(src, tgt) ? midOffset : 0
+  return splitPolyline(orthogonalCorners(src, tgt, offset))
 }

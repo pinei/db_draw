@@ -3,7 +3,21 @@ import { computed } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
 import type { ErRelationship, EntityRect, ConnectorStyle, NotationStyle, Cardinality, LogicalCardinality } from '../model/types'
 import { getConnectionPoints, snapToEntityEdge, resolveLabelPosition, minMaxLabelPosition, selfLoopPoints } from '../utils/connectionPoints'
-import { bezierPath, orthogonalPath, polylinePath, roundedPolylinePath, selfLoopCorners, splitBezierPath, splitOrthogonalPath, splitPolyline, splitRoundedPolyline, SELF_LOOP_CORNER_RADIUS } from '../utils/connectorPath'
+import {
+  bezierPath,
+  orthogonalPath,
+  polylinePath,
+  roundedPolylinePath,
+  selfLoopCorners,
+  splitBezierPath,
+  splitOrthogonalPath,
+  splitPolyline,
+  splitRoundedPolyline,
+  bezierHandlePoint,
+  orthogonalHandlePoint,
+  orthogonalRouteEditable,
+  SELF_LOOP_CORNER_RADIUS,
+} from '../utils/connectorPath'
 
 const props = defineProps<{
   relationship: ErRelationship
@@ -25,6 +39,18 @@ const geometry = computed(() => {
   return getConnectionPoints(props.fromRect, props.toRect, customPoints)
 })
 
+const midOffset = computed(() =>
+  store.state.routeOverrides[props.relationship.id]?.orthogonal?.midOffset ?? 0,
+)
+
+const curvedNudge = computed(() => {
+  const c = store.state.routeOverrides[props.relationship.id]?.curved
+  return {
+    along: c?.along ?? 0,
+    bulge: c?.bulge ?? 0,
+  }
+})
+
 // Self-loops use an explicit outside route (a plain bezier between the loop
 // points would sag into tall cards). Curved → rounded corners; Orthogonal →
 // sharp 90° — same style switch as normal connectors, independent of notation.
@@ -37,8 +63,18 @@ const pathData = computed(() => {
       : polylinePath(corners)
   }
   return props.connectorStyle === 'curved'
-    ? bezierPath(source, target)
-    : orthogonalPath(source, target)
+    ? bezierPath(source, target, curvedNudge.value)
+    : orthogonalPath(source, target, midOffset.value)
+})
+
+const routeHandle = computed(() => {
+  if (isSelfLoop.value) return null
+  const { source, target } = geometry.value
+  if (props.connectorStyle === 'curved') {
+    return bezierHandlePoint(source, target, curvedNudge.value)
+  }
+  if (!orthogonalRouteEditable(source, target)) return null
+  return orthogonalHandlePoint(source, target, midOffset.value)
 })
 
 // Marker ID convention: {notationPrefix}-{Cardinality}-{end|start}
@@ -61,8 +97,8 @@ const barkerHalves = computed(() => {
       : splitPolyline(corners)
   }
   return props.connectorStyle === 'curved'
-    ? splitBezierPath(source, target)
-    : splitOrthogonalPath(source, target)
+    ? splitBezierPath(source, target, curvedNudge.value)
+    : splitOrthogonalPath(source, target, midOffset.value)
 })
 
 function isBarkerOptional(c: Cardinality | LogicalCardinality): boolean {
@@ -122,8 +158,11 @@ const isDimmed = computed(() => {
 
 // Show drag handles only when this connector is hovered (and not dimmed).
 // Self-loops use fixed geometry (custom points don't apply), so no handles.
+// Keep visible while this connector's route mid is being dragged.
 const showHandles = computed(() => {
-  return store.hoveredConnectorId === props.relationship.id && !isSelfLoop.value
+  if (isSelfLoop.value) return false
+  if (store.draggingRoute?.relationshipId === props.relationship.id) return true
+  return store.hoveredConnectorId === props.relationship.id
 })
 
 function onLabelMouseDown(e: MouseEvent) {
@@ -145,11 +184,23 @@ function onHandleMouseDown(endpoint: 'from' | 'to', e: MouseEvent) {
   const { side, fraction } = snapToEntityEdge(point, entityRect)
   store.startDraggingConnectorPoint(props.relationship.id, endpoint, { entityId, side, fraction })
 }
+
+function onRouteHandleMouseDown(e: MouseEvent) {
+  e.preventDefault()
+  e.stopPropagation()
+  store.startDraggingRoute(props.relationship.id)
+}
+
+function onRouteHandleDblClick(e: MouseEvent) {
+  e.preventDefault()
+  e.stopPropagation()
+  store.setRouteOverride(props.relationship.id, props.connectorStyle, null)
+}
 </script>
 
 <template>
-  <g 
-    class="er-connector" 
+  <g
+    class="er-connector"
     :class="{ dimmed: isDimmed }"
     @mouseenter="store.setHoveredConnector(relationship.id)"
     @mouseleave="store.clearHoveredConnector()"
@@ -220,6 +271,16 @@ function onHandleMouseDown(endpoint: 'from' | 'to', e: MouseEvent) {
       r="6"
       class="connector-handle"
       @mousedown="onHandleMouseDown('to', $event)"
+    />
+    <!-- Mid-route handle: orthogonal midOffset / curved bulge (dblclick resets) -->
+    <circle
+      v-if="showHandles && routeHandle"
+      :cx="routeHandle.x"
+      :cy="routeHandle.y"
+      r="5"
+      class="connector-handle connector-route-handle"
+      @mousedown="onRouteHandleMouseDown"
+      @dblclick="onRouteHandleDblClick"
     />
     <text
       v-if="relationship.label"

@@ -2,6 +2,7 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
 import { snapToEntityEdge, snapToConnector, getConnectionPoints } from '../utils/connectionPoints'
+import { curvedNudgeFromPoint, midOffsetFromPoint, orthogonalRouteEditable } from '../utils/connectorPath'
 import ErEntity from './ErEntity.vue'
 import ErConnector from './ErConnector.vue'
 import ConnectorMarker from './ConnectorMarker.vue'
@@ -26,6 +27,8 @@ function onCanvasMouseDown(evt: MouseEvent) {
   if (store.draggingConnectorPoint) return
   // Don't pan if a label is being dragged
   if (store.draggingLabel) return
+  // Don't pan if a mid-route handle is being dragged
+  if (store.draggingRoute) return
 
   isPanning.value = true
   panStartX = evt.clientX
@@ -165,6 +168,37 @@ function onLabelDragEnd() {
   }
 }
 
+// ─── Mid-route drag (orthogonal midOffset / curved bulge) ────────────────────
+
+function onRouteDragMove(evt: MouseEvent) {
+  const drag = store.draggingRoute
+  if (!drag) return
+
+  const pos = screenToModel(evt.clientX, evt.clientY)
+  const rel = store.relationships.find(r => r.id === drag.relationshipId)
+  if (!rel || rel.fromEntityId === rel.toEntityId) return
+
+  const customPoints = store.state.connectorPoints[drag.relationshipId]
+  const { source, target } = getConnectionPoints(
+    store.positionOf(rel.fromEntityId),
+    store.positionOf(rel.toEntityId),
+    customPoints,
+  )
+  const style = layout.value.connectorStyle
+  if (style === 'curved') {
+    store.setRouteOverride(drag.relationshipId, style, curvedNudgeFromPoint(source, target, pos))
+    return
+  }
+  if (!orthogonalRouteEditable(source, target)) return
+  store.setRouteOverride(drag.relationshipId, style, midOffsetFromPoint(source, target, pos))
+}
+
+function onRouteDragEnd() {
+  if (store.draggingRoute) {
+    store.endDraggingRoute()
+  }
+}
+
 // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
 onMounted(() => {
@@ -173,6 +207,8 @@ onMounted(() => {
   window.addEventListener('mouseup', onConnectorPointDragEnd)
   window.addEventListener('mousemove', onLabelDragMove)
   window.addEventListener('mouseup', onLabelDragEnd)
+  window.addEventListener('mousemove', onRouteDragMove)
+  window.addEventListener('mouseup', onRouteDragEnd)
 })
 
 onUnmounted(() => {
@@ -180,6 +216,8 @@ onUnmounted(() => {
   window.removeEventListener('mouseup', onConnectorPointDragEnd)
   window.removeEventListener('mousemove', onLabelDragMove)
   window.removeEventListener('mouseup', onLabelDragEnd)
+  window.removeEventListener('mousemove', onRouteDragMove)
+  window.removeEventListener('mouseup', onRouteDragEnd)
 })
 </script>
 

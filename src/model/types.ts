@@ -85,6 +85,25 @@ export interface CustomConnectionPoints {
   to?: CustomConnectorEndpoint
 }
 
+// Mid-route overrides, stored per connector style so Curved ↔ Orthogonal
+// comparison keeps each style's manual nudge.
+export interface OrthogonalRouteOverride {
+  /** Signed fraction of the routing span; 0 = automatic mid channel / elbow. */
+  midOffset: number
+}
+
+export interface CurvedRouteOverride {
+  /** Signed fraction of chord length along the chord from the auto mid; 0 = centered. */
+  along: number
+  /** Signed fraction of chord length perpendicular to the chord; 0 = default bulge. */
+  bulge: number
+}
+
+export interface RouteOverride {
+  orthogonal?: OrthogonalRouteOverride
+  curved?: CurvedRouteOverride
+}
+
 // ─── Diagram State (presentation model) ─────────────────────────────────────
 
 export interface EntityRect {
@@ -101,6 +120,7 @@ export interface DiagramState {
   layout: DiagramLayout
   connectorPoints: Record<string, CustomConnectionPoints>
   labelPositions: Record<string, LabelPosition>
+  routeOverrides: Record<string, RouteOverride>
 }
 
 // ─── Persisted shapes (diagram artifact) ───────────────────────────────────
@@ -148,5 +168,9 @@ export interface DraggingConnectorPoint {
 }
 
 export interface DraggingLabel {
+  relationshipId: string
+}
+
+export interface DraggingRoute {
   relationshipId: string
 }
