@@ -75,8 +75,8 @@ function autoCubic(src: ConnectionPoint, tgt: ConnectionPoint): Cubic {
 
 /**
  * Control points for the smooth cubic bezier.
- * `along` / `bulge` are signed fractions of chord length that shift the curve
- * mid relative to the automatic path (along the chord / perpendicular).
+ * `along` / `bulge` shift both controls by the same delta (flexible mid);
+ * end tangents may tilt — Curved connectors use side-fixed marker orients.
  */
 function cubicBezier(
   src: ConnectionPoint,

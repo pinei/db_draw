@@ -128,8 +128,21 @@ const minMaxFromPos = computed(() => minMaxLabelPosition(geometry.value.source, 
 
 const minMaxToPos = computed(() => minMaxLabelPosition(geometry.value.target, props.toRect))
 
-const markerEnd   = computed(() => `url(#${ns.value}-${props.relationship.toCardinality}-end)`)
-const markerStart = computed(() => `url(#${ns.value}-${props.relationship.fromCardinality}-start)`)
+const markerEnd = computed(() => {
+  const base = `${ns.value}-${props.relationship.toCardinality}-end`
+  // Curved: fix orient to the entity edge so mid-route nudges don't tilt glyphs
+  if (props.connectorStyle === 'curved' && !isSelfLoop.value) {
+    return `url(#${base}-${geometry.value.target.side})`
+  }
+  return `url(#${base})`
+})
+const markerStart = computed(() => {
+  const base = `${ns.value}-${props.relationship.fromCardinality}-start`
+  if (props.connectorStyle === 'curved' && !isSelfLoop.value) {
+    return `url(#${base}-${geometry.value.source.side})`
+  }
+  return `url(#${base})`
+})
 
 // Label position: use stored {fraction, perp} if available, otherwise midpoint
 // with default offset — or the loop apex for self-loops (the chord midpoint
