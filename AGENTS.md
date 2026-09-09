@@ -26,8 +26,9 @@ Não há lint nem teste automatizado configurado. O typecheck é feito pelo `vue
 ```
 src/
   main.ts                     # bootstrap: createApp + Pinia + mount
-  App.vue                     # gate: landing vs EditorApp; cookie session via GET /auth/me
+  App.vue                     # gate: landing vs EditorApp vs /admin; cookie session via GET /auth/me
   EditorApp.vue               # canvas + painéis; carrega/semeia estado após auth
+  AdminApp.vue                # /admin (lazy): lista users + user.json + modelos; só se /auth/me.admin
   style.css                   # CSS global + variáveis (--c-*)
   model/
     types.ts                  # TODOS os tipos de domínio e apresentação (ErSchema, DiagramState, etc.)
@@ -38,6 +39,7 @@ src/
     auth.ts                   # sessão (email em memória; cookie HttpOnly) + login/logout
   utils/
     authApi.ts                # POST /api/auth (leve — a landing não puxa persist/DBML); credentials: include
+    adminApi.ts               # GET /api/admin/* (só importado pelo AdminApp)
     persist.ts                # load/save via API local + validação de DBML (@dbml/parse)
     codePlaceholder.ts        # serializers DBML e Mermaid a partir de ErSchema
     connectionPoints.ts       # geometria de pontos de conexão, snap em arestas, posição de labels
@@ -92,7 +94,7 @@ Regras importantes:
 ## Como as coisas funcionam
 
 ### Autenticação multiusuário (dev apenas)
-Login com e-mail + token colável via `LoginPanel.vue` na landing. A sessão vive num cookie HttpOnly `dbdraw_sid` (7 dias, `SameSite=Lax`, `Secure` em HTTPS; o JS nunca lê o sid). O editor (`EditorApp.vue`) é `import()` depois do login — a landing não puxa `persist` / `@dbml/parse` / `html2canvas`. Boot: `GET /api/auth/me` com `credentials: 'include'`; 401 → landing. Logout chama `POST /api/auth/logout` (revoga o sid), desmonta o editor (`resetState()` no `onUnmounted`). Seed de primeiro login usa `resetState()` + `saveModel`. Auto-save não dispara deslogado. Endpoints: `POST /api/auth/token {email}` (gera token longo hashed em `user.json` + ticket mágico single-use 30 min, e-mail via Resend), `POST /api/auth/login {email, token}` (compara hash/`timingSafeEqual`, `Set-Cookie`, devolve `lastModelId` + `codePanelSize` + `admin`), `GET /api/auth/magic?ticket=` (consome ticket, cookie, 302 `/`), `GET /api/auth/me` (inclui `admin` a partir de `ADMIN_EMAILS` no servidor — a allowlist não vai no bundle), `POST /api/auth/logout`, `GET/PUT /api/auth/prefs`. Settings mostra o botão Admin só se `admin`. Mutações `/api` exigem Origin na allowlist (`SITE_URL` + Host) e rejeitam `Sec-Fetch-Site: cross-site`. E-mail vira pasta `data/user/<dominio>/<nome>`. `GET/PUT /api/models` usam o cookie (não headers). 401 vira `AuthError` e desloga. Sid hashed em `data/sessions/<hh>/<hash>.json`; tickets em `data/tickets/`. Token plaintext legado em `user.json` ainda autentica até o próximo Generate. `lastModelId` / `codePanelSize` como antes.
+Login com e-mail + token colável via `LoginPanel.vue` na landing. A sessão vive num cookie HttpOnly `dbdraw_sid` (7 dias, `SameSite=Lax`, `Secure` em HTTPS; o JS nunca lê o sid). O editor (`EditorApp.vue`) é `import()` depois do login — a landing não puxa `persist` / `@dbml/parse` / `html2canvas`. Boot: `GET /api/auth/me` com `credentials: 'include'`; 401 → landing. Logout chama `POST /api/auth/logout` (revoga o sid), desmonta o editor (`resetState()` no `onUnmounted`). Seed de primeiro login usa `resetState()` + `saveModel`. Auto-save não dispara deslogado. Endpoints: `POST /api/auth/token {email}` (gera token longo hashed em `user.json` + ticket mágico single-use 30 min, e-mail via Resend), `POST /api/auth/login {email, token}` (compara hash/`timingSafeEqual`, `Set-Cookie`, devolve `lastModelId` + `codePanelSize` + `admin`), `GET /api/auth/magic?ticket=` (consome ticket, cookie, 302 `/`), `GET /api/auth/me` (inclui `admin` a partir de `ADMIN_EMAILS` no servidor — a allowlist não vai no bundle), `POST /api/auth/logout`, `GET/PUT /api/auth/prefs`. Settings mostra o link Admin (`/admin` noutra aba) só se `admin`. `App.vue` trata `/admin`: lazy `AdminApp` se `admin`, senão `replaceState` para `/`. `GET /api/admin/users`, `GET /api/admin/user?email=`, `GET /api/admin/dbml?email=&model=`, `POST /api/admin/clone` e `POST /api/admin/delete` exigem sessão admin (404 se não); o JSON do user vem sem `token`/`tokenHash`/`magicTicketHash`. Clique num modelo no admin abre popup DBML; Clone copia a pasta para os models do admin (id novo, sem conflito). Delete remove a pasta do modelo (e limpa `lastModelId` se apontava para ela). Mutações `/api` exigem Origin na allowlist (`SITE_URL` + Host) e rejeitam `Sec-Fetch-Site: cross-site`. E-mail vira pasta `data/user/<dominio>/<nome>`. `GET/PUT /api/models` usam o cookie (não headers). 401 vira `AuthError` e desloga. Sid hashed em `data/sessions/<hh>/<hash>.json`; tickets em `data/tickets/`. Token plaintext legado em `user.json` ainda autentica até o próximo Generate. `lastModelId` / `codePanelSize` como antes.
 
 ### Persistência (dev apenas)
 A persistência é o router Express em `server/app.ts` (`GET/PUT /api/models/:name`, autenticado) e grava em `data/user/.../models/:name/` (`.json`, `.dbml`, `.mermaid`). Em dev o Vite monta o mesmo router; em produção `npm start` serve `dist/` + API. Sem o servidor (`vite preview` ou arquivo estático) o app roda em memória silenciosamente (`EditorApp.vue` usa try/catch). Primeiro login sem modelo → 404 → `EditorApp.vue` semeia do `sampleData` em memória.

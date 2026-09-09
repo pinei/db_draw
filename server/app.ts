@@ -4,13 +4,19 @@ import { randomBytes } from 'node:crypto'
 import express, { type NextFunction, type Request, type Response, type Router } from 'express'
 import {
   authenticate,
+  cloneModelFolder,
+  deleteModelFolder,
   hashSecret,
   isAdminEmail,
   isInsideDataDir,
   listModels,
+  listModelsDetailed,
+  listUsers,
+  loadModelDbml,
   loadModelJson,
   parseEmail,
   readUserRecord,
+  redactUserRecord,
   saveModelFiles,
   touchLastModel,
   userDir,
@@ -147,6 +153,16 @@ export function createApiRouter(opts: AppOptions): Router {
     res.locals.userHome = session.userHome
     res.locals.email = session.email
     next()
+  }
+
+  const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
+    requireSession(req, res, () => {
+      if (!isAdminEmail(res.locals.email as string, opts.env.ADMIN_EMAILS)) {
+        res.status(404).end()
+        return
+      }
+      next()
+    })
   }
 
   router.post('/auth/token', async (req, res) => {
@@ -297,6 +313,89 @@ export function createApiRouter(opts: AppOptions): Router {
     } catch {
       res.status(400).end()
     }
+  })
+
+  router.get('/admin/users', requireAdmin, (_req, res) => {
+    res.status(200).json({ users: listUsers(dataDir) })
+  })
+
+  router.get('/admin/user', requireAdmin, (req, res) => {
+    const parsed = parseEmail(typeof req.query.email === 'string' ? req.query.email : '')
+    if (!parsed) { res.status(400).json({ error: 'invalid email' }); return }
+    const home = userDir(dataDir, parsed.domain, parsed.username)
+    if (!isInsideDataDir(dataDir, home)) { res.status(400).json({ error: 'invalid email' }); return }
+    const record = readUserRecord(home)
+    if (!record || record.email !== parsed.email) { res.status(404).end(); return }
+    res.status(200).json({
+      user: redactUserRecord(record),
+      models: listModelsDetailed(home),
+    })
+  })
+
+  router.get('/admin/dbml', requireAdmin, (req, res) => {
+    const parsed = parseEmail(typeof req.query.email === 'string' ? req.query.email : '')
+    const modelId = typeof req.query.model === 'string' ? req.query.model.trim() : ''
+    if (!parsed || !/^[a-z0-9_-]+$/i.test(modelId)) {
+      res.status(400).json({ error: 'invalid email or model' })
+      return
+    }
+    const home = userDir(dataDir, parsed.domain, parsed.username)
+    if (!isInsideDataDir(dataDir, home)) { res.status(400).json({ error: 'invalid email' }); return }
+    const record = readUserRecord(home)
+    if (!record || record.email !== parsed.email) { res.status(404).end(); return }
+    const dbml = loadModelDbml(home, modelId)
+    if (dbml == null) { res.status(404).end(); return }
+    res.status(200).json({ dbml })
+  })
+
+  router.post('/admin/clone', requireAdmin, (req, res) => {
+    const from = parseEmail(req.body?.email)
+    const srcId = typeof req.body?.model === 'string' ? req.body.model.trim() : ''
+    const destId = typeof req.body?.id === 'string' ? req.body.id.trim().toLowerCase() : ''
+    if (!from || !srcId || !destId) {
+      res.status(400).json({ error: 'invalid email, model or id' })
+      return
+    }
+    const srcHome = userDir(dataDir, from.domain, from.username)
+    const destHome = res.locals.userHome as string
+    if (!isInsideDataDir(dataDir, srcHome) || !isInsideDataDir(dataDir, destHome)) {
+      res.status(400).json({ error: 'invalid email' })
+      return
+    }
+    const srcRecord = readUserRecord(srcHome)
+    if (!srcRecord || srcRecord.email !== from.email) { res.status(404).end(); return }
+    const result = cloneModelFolder(dataDir, srcHome, srcId, destHome, destId, {
+      name: req.body?.name,
+      description: req.body?.description,
+      tags: req.body?.tags,
+    })
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error })
+      return
+    }
+    res.status(201).json({ id: destId })
+  })
+
+  router.post('/admin/delete', requireAdmin, (req, res) => {
+    const parsed = parseEmail(req.body?.email)
+    const modelId = typeof req.body?.model === 'string' ? req.body.model.trim() : ''
+    if (!parsed || !modelId) {
+      res.status(400).json({ error: 'invalid email or model' })
+      return
+    }
+    const home = userDir(dataDir, parsed.domain, parsed.username)
+    if (!isInsideDataDir(dataDir, home)) {
+      res.status(400).json({ error: 'invalid email' })
+      return
+    }
+    const record = readUserRecord(home)
+    if (!record || record.email !== parsed.email) { res.status(404).end(); return }
+    const result = deleteModelFolder(dataDir, home, modelId)
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error })
+      return
+    }
+    res.status(204).end()
   })
 
   return router
