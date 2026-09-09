@@ -11,6 +11,8 @@ export interface TokenMailEnv {
   MAIL_FROM?: string
   SITE_URL?: string
   COOKIE_SECURE?: string
+  /** Comma/space-separated emails; never sent to the client. */
+  ADMIN_EMAILS?: string
 }
 
 function escapeHtml(value: string): string {

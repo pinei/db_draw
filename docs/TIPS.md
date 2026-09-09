@@ -41,6 +41,7 @@ Variáveis relevantes (ver `.env.example`):
 - `RESEND_API_KEY`, `MAIL_FROM` — envio do token
 - `SITE_URL` — base dos links mágicos (ex. `https://www.dbdraw.io`)
 - `COOKIE_SECURE` — opcional; força `Secure` no cookie de sessão (`true`/`false`). Sem a variável, o flag segue HTTPS (`trust proxy`)
+- `ADMIN_EMAILS` — allowlist de admin (só servidor; o cliente só vê `admin: true|false`)
 - `PORT` / `HOST` — no bare-metal use `HOST=127.0.0.1`; no Compose o `HOST` é sobrescrito para `0.0.0.0`
 
 Depois de editar só o `.env` (sem mudança de código), recrie o container para aplicar:

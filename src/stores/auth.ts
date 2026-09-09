@@ -23,6 +23,7 @@ function clearLegacyStorage() {
 
 export const useAuthStore = defineStore('auth', () => {
   const email = ref<string | null>(null)
+  const admin = ref(false)
   const restoring = ref(true)
 
   const lastModelId = ref<string | null>(null)
@@ -30,11 +31,19 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => !!email.value)
 
-  function applySession(result: { email: string; lastModelId: string | null; codePanelSize: CodePanelSize | null }) {
+  function applySession(result: { email: string; lastModelId: string | null; codePanelSize: CodePanelSize | null; admin: boolean }) {
     email.value = result.email
+    admin.value = result.admin
     lastModelId.value = result.lastModelId
     codePanelSize.value = result.codePanelSize
     clearLegacyStorage()
+  }
+
+  function clearSession() {
+    email.value = null
+    admin.value = false
+    lastModelId.value = null
+    codePanelSize.value = null
   }
 
   /** Asks the server to (re)generate a token and email it to the user. */
@@ -54,9 +63,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       applySession(await fetchMe())
     } catch {
-      email.value = null
-      lastModelId.value = null
-      codePanelSize.value = null
+      clearSession()
     } finally {
       restoring.value = false
     }
@@ -86,14 +93,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout() {
     await logoutRequest()
-    email.value = null
-    lastModelId.value = null
-    codePanelSize.value = null
+    clearSession()
     clearLegacyStorage()
   }
 
   return {
     email,
+    admin,
     restoring,
     isAuthenticated,
     lastModelId,

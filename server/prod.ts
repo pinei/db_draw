@@ -38,6 +38,7 @@ const env = {
   MAIL_FROM: process.env.MAIL_FROM,
   SITE_URL: process.env.SITE_URL,
   COOKIE_SECURE: process.env.COOKIE_SECURE,
+  ADMIN_EMAILS: process.env.ADMIN_EMAILS,
 }
 
 const port = Number(process.env.PORT) || 3000

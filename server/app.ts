@@ -5,6 +5,7 @@ import express, { type NextFunction, type Request, type Response, type Router } 
 import {
   authenticate,
   hashSecret,
+  isAdminEmail,
   isInsideDataDir,
   listModels,
   loadModelJson,
@@ -191,7 +192,12 @@ export function createApiRouter(opts: AppOptions): Router {
     if (!dir) { res.status(401).json({ error: 'invalid credentials' }); return }
     const { lastModelId, codePanelSize } = stampLogin(dir, req)
     issueSid(dataDir, opts.env, req, res, parsed.email)
-    res.status(200).json({ email: parsed.email, lastModelId, codePanelSize })
+    res.status(200).json({
+      email: parsed.email,
+      lastModelId,
+      codePanelSize,
+      admin: isAdminEmail(parsed.email, opts.env.ADMIN_EMAILS),
+    })
   })
 
   router.get('/auth/magic', (req, res) => {
@@ -218,10 +224,12 @@ export function createApiRouter(opts: AppOptions): Router {
   router.get('/auth/me', requireSession, (_req, res) => {
     const home = res.locals.userHome as string
     const record = readUserRecord(home)
+    const email = res.locals.email as string
     res.status(200).json({
-      email: res.locals.email as string,
+      email,
       lastModelId: typeof record?.lastModelId === 'string' ? record.lastModelId : null,
       codePanelSize: sanitizeCodePanelSize(record?.codePanelSize),
+      admin: isAdminEmail(email, opts.env.ADMIN_EMAILS),
     })
   })
 

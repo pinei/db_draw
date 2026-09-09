@@ -16,6 +16,7 @@ export interface LoginResult {
   email: string
   lastModelId: string | null
   codePanelSize: CodePanelSize | null
+  admin: boolean
 }
 
 export interface UserPrefs {
@@ -38,12 +39,14 @@ function parseSessionBody(data: {
   email?: unknown
   lastModelId?: unknown
   codePanelSize?: unknown
+  admin?: unknown
 }): LoginResult {
   if (typeof data.email !== 'string') throw new Error('Unexpected server response')
   return {
     email: data.email,
     lastModelId: typeof data.lastModelId === 'string' ? data.lastModelId : null,
     codePanelSize: parseCodePanelSize(data.codePanelSize),
+    admin: data.admin === true,
   }
 }
 

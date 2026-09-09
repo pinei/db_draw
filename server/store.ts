@@ -63,6 +63,18 @@ export function parseEmail(input: unknown): { domain: string; username: string; 
   return { domain, username, email }
 }
 
+/** True if `email` is in ADMIN_EMAILS (comma/space-separated). Allowlist stays on the server. */
+export function isAdminEmail(email: string, allowlist: string | undefined): boolean {
+  if (!allowlist) return false
+  const parsed = parseEmail(email)
+  if (!parsed) return false
+  for (const part of allowlist.split(/[,;\s]+/)) {
+    const allowed = parseEmail(part)
+    if (allowed && allowed.email === parsed.email) return true
+  }
+  return false
+}
+
 export function userDir(dataDir: string, domain: string, username: string): string {
   return join(dataDir, 'user', domain, username)
 }

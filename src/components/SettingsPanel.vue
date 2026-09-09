@@ -118,6 +118,7 @@ async function exportDiagram(format: DiagramExportFormat) {
     <div class="panel-section">
       <span class="section-label user-email" :title="auth.email ?? ''">{{ auth.email }}</span>
       <div class="btn-group">
+        <button v-if="auth.admin" class="btn" type="button">Admin</button>
         <button class="btn" @click="auth.logout()">Logout</button>
       </div>
     </div>
