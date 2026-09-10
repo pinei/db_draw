@@ -11,6 +11,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   dragstart: [id: string, evt: MouseEvent]
   resize: [id: string, width: number, height: number]
+  resizestart: [id: string, evt: MouseEvent]
 }>()
 
 // foreignObject element ref for measuring actual rendered height
@@ -40,6 +41,13 @@ function onMouseDown(evt: MouseEvent) {
   if (evt.button !== 0) return
   evt.stopPropagation()
   emit('dragstart', props.entity.id, evt)
+}
+
+function onResizeMouseDown(evt: MouseEvent) {
+  if (evt.button !== 0) return
+  evt.preventDefault()
+  evt.stopPropagation()
+  emit('resizestart', props.entity.id, evt)
 }
 </script>
 
@@ -83,6 +91,16 @@ function onMouseDown(evt: MouseEvent) {
         </ul>
       </div>
     </foreignObject>
+
+    <!-- Invisible grab area for widening the card from its right edge. -->
+    <rect
+      :x="rect.width - 6"
+      y="0"
+      width="12"
+      :height="rect.height"
+      class="entity-width-handle"
+      @mousedown="onResizeMouseDown"
+    />
   </g>
 </template>
 
@@ -94,6 +112,12 @@ function onMouseDown(evt: MouseEvent) {
 
 .er-entity.dragging {
   cursor: grabbing;
+}
+
+.entity-width-handle {
+  fill: transparent;
+  cursor: ew-resize;
+  pointer-events: all;
 }
 
 .entity-bg {

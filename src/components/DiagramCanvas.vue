@@ -81,6 +81,7 @@ const canvasTransform = computed(() => {
 
 const svgEl = ref<SVGSVGElement | null>(null)
 const draggingEntityId = ref<string | null>(null)
+const resizingEntityId = ref<string | null>(null)
 let entityDragOffsetX = 0
 let entityDragOffsetY = 0
 
@@ -119,6 +120,27 @@ function onEntityDragEnd() {
   draggingEntityId.value = null
   window.removeEventListener('mousemove', onEntityDragMove)
   window.removeEventListener('mouseup', onEntityDragEnd)
+}
+
+function onEntityResizeStart(id: string, evt: MouseEvent) {
+  resizingEntityId.value = id
+  window.addEventListener('mousemove', onEntityResizeMove)
+  window.addEventListener('mouseup', onEntityResizeEnd)
+  evt.preventDefault()
+}
+
+function onEntityResizeMove(evt: MouseEvent) {
+  if (!resizingEntityId.value) return
+  const rect = store.positionOf(resizingEntityId.value)
+  const pos = screenToModel(evt.clientX, evt.clientY)
+  const width = Math.max(220, pos.x - rect.x)
+  store.updateEntitySize(resizingEntityId.value, width, rect.height)
+}
+
+function onEntityResizeEnd() {
+  resizingEntityId.value = null
+  window.removeEventListener('mousemove', onEntityResizeMove)
+  window.removeEventListener('mouseup', onEntityResizeEnd)
 }
 
 function onEntityResize(id: string, width: number, height: number) {
@@ -290,6 +312,7 @@ onUnmounted(() => {
         :dragging="draggingEntityId === entity.id"
         @dragstart="onEntityDragStart"
         @resize="onEntityResize"
+        @resizestart="onEntityResizeStart"
       />
     </g>
   </svg>
