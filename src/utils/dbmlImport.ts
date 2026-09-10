@@ -28,6 +28,7 @@ interface ParsedField {
   unique?: boolean
   not_null?: boolean
   dbdefault?: unknown
+  note?: { value?: unknown }
   inline_refs?: ParsedInlineRef[]
 }
 
@@ -39,6 +40,7 @@ interface ParsedIndex {
 interface ParsedTable {
   name?: string
   fields?: ParsedField[]
+  note?: { value?: unknown }
   // composite PKs land here (the interpreter clears per-column pk for them)
   indexes?: ParsedIndex[]
 }
@@ -85,6 +87,7 @@ export interface NormalizedRef {
   toMany: boolean
   label?: string
   refName?: string
+  refComment?: string
 }
 
 export interface CompiledDbml {
@@ -174,9 +177,21 @@ export function compileDbml(
       const line = lines[i] ?? ''
       const m = REF_LINE_RE.exec(line)
       if (m) {
-        const [, refName, t, f, op] = m
+        const [, refName, t, f, op, , , comment] = m
         const [fromMany, toMany] = opToMany(op)
-        selfLoopRefs.push({ fromTable: t, fromField: f, toTable: t, toField: f, fromMany, toMany, refName: refName || undefined })
+        const refLabel = comment?.trim() || undefined
+        const name = refName || undefined
+        selfLoopRefs.push({
+          fromTable: t,
+          fromField: f,
+          toTable: t,
+          toField: f,
+          fromMany,
+          toMany,
+          label: name ?? refLabel,
+          refName: name,
+          refComment: refLabel,
+        })
       } else {
         ignored++ // long-form self-ref: can't map, counted as ignored
       }
@@ -224,6 +239,7 @@ export function compileDbml(
       toMany,
       label: name ?? commentLabel,
       refName: name,
+      refComment: commentLabel,
     })
   }
 
@@ -358,7 +374,11 @@ function normType(t: string): string {
 }
 
 function fieldSig(f: ErField): string {
-  return `${f.name}:${f.type}:${f.isPK ? 'pk' : ''}`
+  return `${f.name}:${f.type}:${f.isPK ? 'pk' : ''}:${f.note ?? ''}`
+}
+
+function parsedNote(raw: { value?: unknown } | undefined): string | undefined {
+  return typeof raw?.value === 'string' ? raw.value : undefined
 }
 
 export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlPatch {
@@ -418,13 +438,14 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
         type: old && normType(old.type) === normType(parsedType) ? old.type : parsedType,
         isPK: !!col.pk || compositePk.has(col.name),
         isFK: false, // resolved from refs below; orphans become plain fields
+        note: parsedNote(col.note),
       })
     }
-    const next: ErEntity = { id: entityId, name, fields: nextFields }
+    const next: ErEntity = { id: entityId, name, fields: nextFields, note: parsedNote(table.note) }
     if (existing) {
       const a = existing.fields.map(fieldSig).join('|')
       const b = nextFields.map(fieldSig).join('|')
-      if (a !== b) changedEntityIds.push(entityId)
+      if (a !== b || existing.note !== next.note) changedEntityIds.push(entityId)
     }
     nextEntities.push(next)
   }
@@ -472,7 +493,14 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
       if (wantFrom !== match.fromCardinality || wantTo !== match.toCardinality || wantLabel !== match.label) {
         changedRels++
       }
-      nextRels.push({ ...match, fromCardinality: wantFrom, toCardinality: wantTo, label: wantLabel, refName: ref.refName })
+      nextRels.push({
+        ...match,
+        fromCardinality: wantFrom,
+        toCardinality: wantTo,
+        label: wantLabel,
+        refName: ref.refName,
+        refComment: ref.refComment,
+      })
     } else {
       const [from, to] = defaultCardinalities(ref, nnOf)
       const id = uniqueId(`rel_${fromId}_${toId}`, taken)
@@ -484,6 +512,7 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
         toCardinality: to,
         label: ref.label,
         refName: ref.refName,
+        refComment: ref.refComment,
       })
       createdRelIds.push(id)
       createdRels++

@@ -5,12 +5,24 @@ import type { ErSchema, ErEntity, ErField, ErRelationship, Cardinality, LogicalC
 // the binder rejects duplicate same-endpoint refs (code 5001), so emitting
 // both would make our own output fail validation.
 
+function escapeDbmlString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+}
+
+function dbmlNoteValue(value: string): string {
+  if (/\r?\n/.test(value)) {
+    return `'''${value.replace(/\r\n/g, '\n')}'''`
+  }
+  return `'${escapeDbmlString(value)}'`
+}
+
 function dbmlFieldLine(f: ErField, notNull: boolean): string {
   const flags: string[] = []
   if (f.isPK) flags.push('pk')
   // [not null] only on FK holders (never on pure PKs) — it feeds the import's
   // one-side optionality inference, and PKs must not flip the other endpoint
   if (notNull) flags.push('not null')
+  if (f.note) flags.push(`note: ${dbmlNoteValue(f.note)}`)
   const annotation = flags.length ? ` [${flags.join(', ')}]` : ''
   return `  ${f.name} ${f.type}${annotation}`
 }
@@ -53,7 +65,8 @@ function relLine(rel: ErRelationship, sides: FkSides): string {
   const toCol = fkOnTo ? fkOnTo.name : pkFieldName(toEntity)
   const op = cardinalityToDbmlOp(rel.fromCardinality, rel.toCardinality)
   const refPrefix = rel.refName ? `Ref ${rel.refName}:` : 'Ref:'
-  const comment = !rel.refName && rel.label ? ` // ${rel.label}` : ''
+  const commentText = rel.refComment ?? (!rel.refName ? rel.label : undefined)
+  const comment = commentText ? ` // ${commentText}` : ''
   return `${refPrefix} ${fromEntity.name}.${fromCol} ${op} ${toEntity.name}.${toCol}${comment}`
 }
 
@@ -79,7 +92,8 @@ export function generateDbml(schema: ErSchema): string {
   }
   const tables = schema.entities.map((entity) => {
     const fields = entity.fields.map((f) => dbmlFieldLine(f, notNull.has(`${entity.id} ${f.name}`))).join('\n')
-    return `Table ${entity.name} {\n${fields}\n}`
+    const note = entity.note ? `\n\n  Note: ${dbmlNoteValue(entity.note)}` : ''
+    return `Table ${entity.name} {\n${fields}${note}\n}`
   })
 
   // Blank line between tables and before the Refs block; Refs stay packed

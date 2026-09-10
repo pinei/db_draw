@@ -15,12 +15,14 @@ export interface ErField {
   isPK: boolean
   isFK: boolean
   referencedEntityId?: string
+  note?: string
 }
 
 export interface ErEntity {
   id: string
   name: string
   fields: ErField[]
+  note?: string
 }
 
 export interface ErRelationship {
@@ -31,6 +33,7 @@ export interface ErRelationship {
   toCardinality: Cardinality
   label?: string
   refName?: string
+  refComment?: string
 }
 
 export interface ErSchema {
