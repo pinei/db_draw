@@ -66,17 +66,51 @@ export async function loadModel(name: string): Promise<PersistedDiagramState | n
   return data as PersistedDiagramState
 }
 
-export async function saveModel(name: string, state: DiagramState): Promise<void> {
-  // Strip UI preferences (codeFormat, codePanelOpen, theme) — the artifact
-  // holds diagram properties only, not application layout
-  const { codeFormat, codePanelOpen, theme, ...persistedLayout } = state.layout
-  // Attach derived exports as side-channel fields so the server can write them
-  const payload = {
-    ...state,
-    layout: persistedLayout,
-    _dbml:    generateDbml(state.schema),
-    _mermaid: generateMermaid(state.schema),
+/** Which slices to include in a partial model PUT. */
+export interface ModelSaveSlices {
+  meta?: boolean
+  schema?: boolean
+  presentation?: boolean
+  exports?: boolean
+}
+
+export function anySaveSlice(slices: ModelSaveSlices): boolean {
+  return !!(slices.meta || slices.schema || slices.presentation || slices.exports)
+}
+
+/** Build the sliced PUT envelope. Client remains authoritative for dbml/mermaid. */
+export function buildModelSavePayload(state: DiagramState, slices: ModelSaveSlices): Record<string, unknown> {
+  const payload: Record<string, unknown> = {}
+  if (slices.meta) payload.meta = state.meta
+  if (slices.schema) payload.schema = state.schema
+  if (slices.presentation) {
+    const { codeFormat: _cf, codePanelOpen: _cpo, theme: _th, ...persistedLayout } = state.layout
+    payload.presentation = {
+      entityPositions: state.entityPositions,
+      connectorPoints: state.connectorPoints,
+      labelPositions: state.labelPositions,
+      routeOverrides: state.routeOverrides,
+      layout: persistedLayout,
+    }
   }
+  if (slices.exports) {
+    // Generated on the client from the live schema (Apply / structural edits).
+    // Presentation-only saves omit this so on-disk .dbml/.mermaid stay put.
+    payload.exports = {
+      dbml: generateDbml(state.schema),
+      mermaid: generateMermaid(state.schema),
+    }
+  }
+  return payload
+}
+
+export async function saveModelSlices(
+  name: string,
+  state: DiagramState,
+  slices: ModelSaveSlices,
+): Promise<void> {
+  if (!anySaveSlice(slices)) return
+  const payload = buildModelSavePayload(state, slices)
   const res = await fetch(`${BASE}/${name}`, {
     method: 'PUT',
     credentials: 'include',
@@ -84,5 +118,18 @@ export async function saveModel(name: string, state: DiagramState): Promise<void
     body: JSON.stringify(payload),
   })
   if (res.status === 401) throw new AuthError()
-  if (!res.ok && res.status !== 204) throw new Error(`Failed to save model "${name}": ${res.status}`)
+  if (!res.ok && res.status !== 204) {
+    const data = await res.json().catch(() => ({})) as { error?: unknown }
+    throw new Error(typeof data.error === 'string' ? data.error : `Failed to save model "${name}": ${res.status}`)
+  }
+}
+
+/** Full snapshot save (create / seed) — all slices including exports. */
+export async function saveModel(name: string, state: DiagramState): Promise<void> {
+  await saveModelSlices(name, state, {
+    meta: true,
+    schema: true,
+    presentation: true,
+    exports: true,
+  })
 }

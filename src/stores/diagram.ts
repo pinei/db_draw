@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import type { DiagramState, PersistedDiagramState, ConnectorStyle, NotationStyle, CodeFormat, ThemeMode, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel, DraggingRoute, RouteOverride } from '../model/types'
 import { bibliotecaSchema } from '../model/sampleData'
-import { saveModel, AuthError, listModels, loadModel } from '../utils/persist'
+import { saveModel, saveModelSlices, anySaveSlice, AuthError, listModels, loadModel, type ModelSaveSlices } from '../utils/persist'
 import { compileDbml, buildDbmlPatch, type DbmlApplyStats, type DbmlIssueLine } from '../utils/dbmlImport'
 import { defaultMeta, sanitizeTags, seedMeta } from '../utils/modelMeta'
 import { useAuthStore } from './auth'
@@ -154,6 +154,35 @@ export const useDiagramStore = defineStore('diagram', () => {
 
   // Auto-save status exposed to the UI
   const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
+  // Partial-save dirty flags — presentation-only edits skip .dbml/.mermaid
+  const dirty = ref<Required<ModelSaveSlices>>({
+    meta: false,
+    schema: false,
+    presentation: false,
+    exports: false,
+  })
+  let suppressDirty = false
+  let saveTimer: ReturnType<typeof setTimeout> | null = null
+
+  function clearDirty() {
+    dirty.value = { meta: false, schema: false, presentation: false, exports: false }
+  }
+
+  function markDirty(slice: keyof ModelSaveSlices) {
+    if (suppressDirty || !useAuthStore().isAuthenticated) return
+    dirty.value[slice] = true
+    if (slice === 'schema') dirty.value.exports = true
+    scheduleSave()
+  }
+
+  function scheduleSave() {
+    if (!useAuthStore().isAuthenticated) return
+    if (!anySaveSlice(dirty.value)) return
+    if (saveTimer) clearTimeout(saveTimer)
+    saveStatus.value = 'saving'
+    saveTimer = setTimeout(() => { void runSave() }, 1500)
+  }
 
   // Currently open model (folder name). Session state — not part of the
   // diagram artifact; remembered per browser so reloads reopen the same model.
@@ -397,7 +426,10 @@ export const useDiagramStore = defineStore('diagram', () => {
       clearTimeout(saveTimer)
       saveTimer = null
     }
+    suppressDirty = true
     state.value = buildInitialState()
+    clearDirty()
+    suppressDirty = false
     hoveredConnectorId.value = null
     draggingConnectorPoint.value = null
     draggingLabel.value = null
@@ -411,6 +443,7 @@ export const useDiagramStore = defineStore('diagram', () => {
   // models start with an empty canvas (no sample entities).
   function seedFreshModel(id: string, opts: { name?: string; description?: string; tags?: string[]; blank?: boolean } = {}) {
     resetState()
+    suppressDirty = true
     if (opts.blank) {
       state.value.schema = { entities: [], relationships: [] }
       state.value.entityPositions = {}
@@ -424,6 +457,8 @@ export const useDiagramStore = defineStore('diagram', () => {
       description: opts.description?.trim() ?? '',
       tags: sanitizeTags(opts.tags),
     }
+    clearDirty()
+    suppressDirty = false
     setCurrentModelId(id)
   }
 
@@ -456,6 +491,11 @@ export const useDiagramStore = defineStore('diagram', () => {
       }
     }
     pruneOrphanPresentation({ schema: loaded.schema, entityPositions, connectorPoints, labelPositions, routeOverrides })
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    suppressDirty = true
     state.value = {
       ...loaded,
       meta: defaultMeta(modelId, loaded.meta),
@@ -473,20 +513,41 @@ export const useDiagramStore = defineStore('diagram', () => {
           : 'crowsfoot',
       },
     }
+    clearDirty()
+    suppressDirty = false
+    saveStatus.value = 'idle'
   }
 
   async function persistCurrent(): Promise<void> {
+    // Full replace — used for create/seed so all files exist
+    clearDirty()
     await saveModel(currentModelId.value, state.value)
   }
 
   async function runSave(): Promise<void> {
+    saveTimer = null
+    const slices: ModelSaveSlices = { ...dirty.value }
+    if (!anySaveSlice(slices)) {
+      saveStatus.value = 'idle'
+      return
+    }
+    // Clear claimed slices before await; re-dirty if edits arrive mid-flight
+    for (const key of Object.keys(slices) as (keyof ModelSaveSlices)[]) {
+      if (slices[key]) dirty.value[key] = false
+    }
     saveStatus.value = 'saving'
     try {
-      await persistCurrent()
+      await saveModelSlices(currentModelId.value, state.value, slices)
+      if (anySaveSlice(dirty.value)) {
+        scheduleSave()
+        return
+      }
       saveStatus.value = 'saved'
       setTimeout(() => { saveStatus.value = 'idle' }, 2000)
     } catch (e) {
-      // Token revoked/expired elsewhere — back to the login screen
+      for (const key of Object.keys(slices) as (keyof ModelSaveSlices)[]) {
+        if (slices[key]) dirty.value[key] = true
+      }
       if (e instanceof AuthError) { useAuthStore().logout(); return }
       saveStatus.value = 'error'
     }
@@ -500,20 +561,24 @@ export const useDiagramStore = defineStore('diagram', () => {
       saveTimer = null
     }
     if (!useAuthStore().isAuthenticated) return
-    await runSave()
+    if (anySaveSlice(dirty.value)) await runSave()
   }
 
-  // Debounced auto-save — fires 1.5s after the last state mutation
-  // (never while logged out: no credentials → the PUT would 401 anyway)
-  let saveTimer: ReturnType<typeof setTimeout> | null = null
+  // Slice watches — UI prefs (codeFormat/codePanelOpen/theme) do not dirty
+  watch(() => state.value.meta, () => markDirty('meta'), { deep: true })
+  watch(() => state.value.schema, () => markDirty('schema'), { deep: true })
   watch(
-    state,
-    () => {
-      if (!useAuthStore().isAuthenticated) return
-      if (saveTimer) clearTimeout(saveTimer)
-      saveStatus.value = 'saving'
-      saveTimer = setTimeout(() => { void runSave() }, 1500)
-    },
+    () => [
+      state.value.entityPositions,
+      state.value.connectorPoints,
+      state.value.labelPositions,
+      state.value.routeOverrides,
+      state.value.layout.connectorStyle,
+      state.value.layout.notationStyle,
+      state.value.layout.canvasOffset,
+      state.value.layout.canvasScale,
+    ],
+    () => markDirty('presentation'),
     { deep: true },
   )
 

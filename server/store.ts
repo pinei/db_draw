@@ -370,3 +370,125 @@ export function saveModelFiles(
   writeFileSync(join(dir, `${name}.dbml`), dbml, 'utf-8')
   writeFileSync(join(dir, `${name}.mermaid`), mermaid, 'utf-8')
 }
+
+function stripUiLayoutPrefs(layout: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...layout }
+  delete next.codeFormat
+  delete next.codePanelOpen
+  delete next.theme
+  return next
+}
+
+export interface ModelSavePatch {
+  meta?: unknown
+  schema?: unknown
+  presentation?: {
+    entityPositions?: unknown
+    connectorPoints?: unknown
+    labelPositions?: unknown
+    routeOverrides?: unknown
+    layout?: unknown
+  }
+  exports?: {
+    dbml?: unknown
+    mermaid?: unknown
+  }
+}
+
+/**
+ * Merge a partial model PUT into models/<name>/.
+ * - JSON is merged field-wise (missing slices keep prior values).
+ * - .dbml / .mermaid are rewritten only when exports.dbml / exports.mermaid are strings.
+ * - Creating a new model requires at least schema (or a full prior file).
+ */
+export function mergeModelPatch(
+  userHome: string,
+  name: string,
+  patch: ModelSavePatch,
+): { ok: true } | { ok: false; status: number; error: string } {
+  if (!MODEL_ID_RE.test(name)) {
+    return { ok: false, status: 400, error: 'invalid model id' }
+  }
+  const jsonPath = join(userHome, 'models', name, `${name}.json`)
+  const dbmlPath = join(userHome, 'models', name, `${name}.dbml`)
+  const mermaidPath = join(userHome, 'models', name, `${name}.mermaid`)
+
+  let current: Record<string, unknown> = {}
+  const existed = existsSync(jsonPath)
+  if (existed) {
+    try {
+      current = JSON.parse(readFileSync(jsonPath, 'utf-8')) as Record<string, unknown>
+    } catch {
+      return { ok: false, status: 400, error: 'corrupt model' }
+    }
+  } else if (patch.schema === undefined && patch.presentation === undefined) {
+    return { ok: false, status: 404, error: 'model not found' }
+  }
+
+  const next: Record<string, unknown> = { ...current }
+  if (patch.meta !== undefined) next.meta = patch.meta
+  if (patch.schema !== undefined) next.schema = patch.schema
+
+  if (patch.presentation) {
+    const p = patch.presentation
+    if (p.entityPositions !== undefined) next.entityPositions = p.entityPositions
+    if (p.connectorPoints !== undefined) next.connectorPoints = p.connectorPoints
+    if (p.labelPositions !== undefined) next.labelPositions = p.labelPositions
+    if (p.routeOverrides !== undefined) next.routeOverrides = p.routeOverrides
+    if (p.layout !== undefined && p.layout && typeof p.layout === 'object') {
+      const prevLayout = (next.layout && typeof next.layout === 'object')
+        ? next.layout as Record<string, unknown>
+        : {}
+      next.layout = {
+        ...prevLayout,
+        ...stripUiLayoutPrefs(p.layout as Record<string, unknown>),
+      }
+    }
+  }
+
+  if (!existed) {
+    if (next.schema === undefined) {
+      return { ok: false, status: 400, error: 'schema required to create model' }
+    }
+    if (next.entityPositions === undefined) next.entityPositions = {}
+    if (next.connectorPoints === undefined) next.connectorPoints = {}
+    if (next.labelPositions === undefined) next.labelPositions = {}
+    if (next.routeOverrides === undefined) next.routeOverrides = {}
+    if (next.layout === undefined) {
+      next.layout = {
+        connectorStyle: 'curved',
+        notationStyle: 'crowsfoot',
+        canvasOffset: { x: 0, y: 0 },
+        canvasScale: 1,
+      }
+    }
+  }
+
+  try {
+    const dir = join(userHome, 'models', name)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(jsonPath, JSON.stringify(next, null, 2), 'utf-8')
+
+    const ex = patch.exports
+    if (ex && typeof ex.dbml === 'string') {
+      writeFileSync(dbmlPath, ex.dbml, 'utf-8')
+    } else if (!existed && !existsSync(dbmlPath)) {
+      writeFileSync(dbmlPath, '', 'utf-8')
+    }
+    if (ex && typeof ex.mermaid === 'string') {
+      writeFileSync(mermaidPath, ex.mermaid, 'utf-8')
+    } else if (!existed && !existsSync(mermaidPath)) {
+      writeFileSync(mermaidPath, '', 'utf-8')
+    }
+    return { ok: true }
+  } catch {
+    return { ok: false, status: 500, error: 'save failed' }
+  }
+}
+
+/** True when the body uses the sliced PATCH envelope (not a legacy full snapshot). */
+export function isModelSavePatch(body: Record<string, unknown>): boolean {
+  return 'presentation' in body
+    || 'exports' in body
+    || ('schema' in body && !('entityPositions' in body))
+}

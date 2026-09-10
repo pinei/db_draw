@@ -18,6 +18,8 @@ import {
   readUserRecord,
   redactUserRecord,
   saveModelFiles,
+  mergeModelPatch,
+  isModelSavePatch,
   touchLastModel,
   userDir,
   writeUserRecord,
@@ -296,6 +298,35 @@ export function createApiRouter(opts: AppOptions): Router {
     if (!/^[a-z0-9_-]+$/i.test(name)) { res.status(400).end(); return }
     try {
       const body = { ...(req.body as Record<string, unknown>) }
+      const home = res.locals.userHome as string
+
+      if (isModelSavePatch(body)) {
+        const result = mergeModelPatch(home, name, {
+          meta: body.meta,
+          schema: body.schema,
+          presentation: (body.presentation && typeof body.presentation === 'object')
+            ? body.presentation as {
+              entityPositions?: unknown
+              connectorPoints?: unknown
+              labelPositions?: unknown
+              routeOverrides?: unknown
+              layout?: unknown
+            }
+            : undefined,
+          exports: (body.exports && typeof body.exports === 'object')
+            ? body.exports as { dbml?: unknown; mermaid?: unknown }
+            : undefined,
+        })
+        if (!result.ok) {
+          res.status(result.status).json({ error: result.error })
+          return
+        }
+        touchLastModel(home, name)
+        res.status(204).end()
+        return
+      }
+
+      // Legacy full snapshot (still used by older clients / full replace)
       const dbml = typeof body._dbml === 'string' ? body._dbml : ''
       const mermaid = typeof body._mermaid === 'string' ? body._mermaid : ''
       delete body._dbml
@@ -306,7 +337,6 @@ export function createApiRouter(opts: AppOptions): Router {
         delete layout.codePanelOpen
         delete layout.theme
       }
-      const home = res.locals.userHome as string
       saveModelFiles(home, name, body, dbml, mermaid)
       touchLastModel(home, name)
       res.status(204).end()
