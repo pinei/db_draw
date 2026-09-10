@@ -168,6 +168,14 @@ export interface ConnectionPoint {
 export interface LabelPosition {
   fraction: number
   perp: number
+  selfLoop?: SelfLoopLabelPosition
+}
+
+export interface SelfLoopLabelPosition {
+  /** Fraction along the outer segment between the two loop corners. */
+  along: number
+  /** Signed distance from that segment toward the outside of the loop. */
+  offset: number
 }
 
 // ─── Connector Point Drag State ──────────────────────────────────────────────

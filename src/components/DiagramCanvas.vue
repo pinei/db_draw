@@ -6,7 +6,9 @@ import {
   curvedNudgeFromPoint,
   midOffsetFromPoint,
   orthogonalRouteEditable,
+  selfLoopCorners,
   selfLoopExtentFromPoint,
+  selfLoopLabelPositionFromPoint,
 } from '../utils/connectorPath'
 import ErEntity from './ErEntity.vue'
 import ErConnector from './ErConnector.vue'
@@ -158,11 +160,25 @@ function onLabelDragMove(evt: MouseEvent) {
   const rel = store.relationships.find(r => r.id === drag.relationshipId)
   if (!rel) return
 
-  const customPoints = store.state.connectorPoints[drag.relationshipId]
+  const fromRect = store.positionOf(rel.fromEntityId)
+  const toRect = store.positionOf(rel.toEntityId)
+  if (rel.fromEntityId === rel.toEntityId) {
+    const corner = store.state.routeOverrides[rel.id]?.selfLoop?.corner ?? 'ne'
+    const extent = store.state.routeOverrides[rel.id]?.selfLoop?.extent ?? 56
+    const { source, target } = selfLoopPoints(fromRect, corner)
+    const corners = selfLoopCorners(source, target, extent, corner)
+    store.setLabelPosition(drag.relationshipId, {
+      fraction: 0.5,
+      perp: 0,
+      selfLoop: selfLoopLabelPositionFromPoint(corners, corner, pos),
+    })
+    return
+  }
+
   const { source, target } = getConnectionPoints(
-    store.positionOf(rel.fromEntityId),
-    store.positionOf(rel.toEntityId),
-    customPoints,
+    fromRect,
+    toRect,
+    store.state.connectorPoints[drag.relationshipId],
   )
   store.setLabelPosition(drag.relationshipId, snapToConnector(pos, source.point, target.point))
 }
@@ -185,8 +201,14 @@ function onRouteDragMove(evt: MouseEvent) {
 
   if (rel.fromEntityId === rel.toEntityId) {
     const rect = store.positionOf(rel.fromEntityId)
+    const previousCorner = store.state.routeOverrides[rel.id]?.selfLoop?.corner ?? 'ne'
     const corner = selfLoopCornerFromPoint(rect, pos)
     const { source, target } = selfLoopPoints(rect, corner)
+    if (corner !== previousCorner) {
+      // A corner change rotates the loop's outer segment. Reset the label to
+      // the natural centered position instead of carrying the old axis offset.
+      store.setLabelPosition(drag.relationshipId, null)
+    }
     store.setSelfLoopRoute(drag.relationshipId, {
       corner,
       extent: selfLoopExtentFromPoint(source, target, pos, corner),

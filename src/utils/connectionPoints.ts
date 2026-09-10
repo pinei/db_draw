@@ -163,18 +163,9 @@ export function minMaxLabelPosition(conn: ConnectionPoint, entity: EntityRect): 
     : { x: lx, y: ly + g, anchor, baseline: 'hanging' }
 }
 
-// Self-loop anchors (fromEntityId === toEntityId) — clockwise around each corner
-const SELF_LOOP_ANCHORS: Record<SelfLoopCorner, {
-  fromSide: EdgeSide
-  fromFrac: number
-  toSide: EdgeSide
-  toFrac: number
-}> = {
-  ne: { fromSide: 'top', fromFrac: 0.75, toSide: 'right', toFrac: 0.25 },
-  se: { fromSide: 'right', fromFrac: 0.75, toSide: 'bottom', toFrac: 0.75 },
-  sw: { fromSide: 'bottom', fromFrac: 0.25, toSide: 'left', toFrac: 0.75 },
-  nw: { fromSide: 'left', fromFrac: 0.25, toSide: 'top', toFrac: 0.25 },
-}
+// Self-loop anchors stay a fixed distance from the corner. Fractions would
+// make the loop change shape whenever the entity is resized.
+export const SELF_LOOP_ANCHOR_OFFSET = 28
 
 export const SELF_LOOP_CORNERS: SelfLoopCorner[] = ['ne', 'se', 'sw', 'nw']
 
@@ -200,10 +191,45 @@ export function selfLoopPoints(
   rect: EntityRect,
   corner: SelfLoopCorner = 'ne',
 ): { source: ConnectionPoint; target: ConnectionPoint } {
-  const a = SELF_LOOP_ANCHORS[corner]
+  const offset = Math.min(SELF_LOOP_ANCHOR_OFFSET, rect.width / 2, rect.height / 2)
+  const top = rect.y - MARKER_CLEARANCE
+  const right = rect.x + rect.width + MARKER_CLEARANCE
+  const bottom = rect.y + rect.height + MARKER_CLEARANCE
+  const left = rect.x - MARKER_CLEARANCE
+
+  let source: Point
+  let target: Point
+  let sourceSide: EdgeSide
+  let targetSide: EdgeSide
+  switch (corner) {
+    case 'ne':
+      source = { x: rect.x + rect.width - offset, y: top }
+      target = { x: right, y: rect.y + offset }
+      sourceSide = 'top'
+      targetSide = 'right'
+      break
+    case 'se':
+      source = { x: right, y: rect.y + rect.height - offset }
+      target = { x: rect.x + rect.width - offset, y: bottom }
+      sourceSide = 'right'
+      targetSide = 'bottom'
+      break
+    case 'sw':
+      source = { x: rect.x + offset, y: bottom }
+      target = { x: left, y: rect.y + rect.height - offset }
+      sourceSide = 'bottom'
+      targetSide = 'left'
+      break
+    case 'nw':
+      source = { x: left, y: rect.y + offset }
+      target = { x: rect.x + offset, y: top }
+      sourceSide = 'left'
+      targetSide = 'top'
+      break
+  }
   return {
-    source: { point: pointOnEdge(rect, a.fromSide, a.fromFrac), side: a.fromSide },
-    target: { point: pointOnEdge(rect, a.toSide, a.toFrac), side: a.toSide },
+    source: { point: source, side: sourceSide },
+    target: { point: target, side: targetSide },
   }
 }
 

@@ -1,4 +1,4 @@
-import type { ConnectionPoint, EdgeSide, Point, SelfLoopCorner } from '../model/types'
+import type { ConnectionPoint, EdgeSide, Point, SelfLoopCorner, SelfLoopLabelPosition } from '../model/types'
 
 // Control point distance for bezier curves, as a fraction of the segment length
 const BEZIER_TENSION = 0.45
@@ -333,6 +333,50 @@ export function selfLoopCorners(
         { x: tx, y: ty - e },
         target.point,
       ]
+  }
+}
+
+function selfLoopOuterNormal(corner: SelfLoopCorner): Point {
+  switch (corner) {
+    case 'ne': return { x: 0, y: -1 }
+    case 'se': return { x: 1, y: 0 }
+    case 'sw': return { x: 0, y: 1 }
+    case 'nw': return { x: -1, y: 0 }
+  }
+}
+
+/** Resolve a label position relative to the outer segment of a self-loop. */
+export function selfLoopLabelPoint(corners: Point[], corner: SelfLoopCorner, position: SelfLoopLabelPosition): Point {
+  const start = corners[1]
+  const end = corners[2]
+  const along = Math.max(0, Math.min(1, position.along))
+  const offset = Number.isFinite(position.offset) ? position.offset : 0
+  const normal = selfLoopOuterNormal(corner)
+  return {
+    x: start.x + (end.x - start.x) * along + normal.x * offset,
+    y: start.y + (end.y - start.y) * along + normal.y * offset,
+  }
+}
+
+/** Convert a pointer position into coordinates relative to a self-loop's outer segment. */
+export function selfLoopLabelPositionFromPoint(
+  corners: Point[],
+  corner: SelfLoopCorner,
+  point: Point,
+): SelfLoopLabelPosition {
+  const start = corners[1]
+  const end = corners[2]
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  const lengthSquared = dx * dx + dy * dy
+  const length = Math.sqrt(lengthSquared)
+  const along = lengthSquared === 0
+    ? 0.5
+    : Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared))
+  const normal = selfLoopOuterNormal(corner)
+  return {
+    along,
+    offset: (point.x - start.x) * normal.x + (point.y - start.y) * normal.y,
   }
 }
 

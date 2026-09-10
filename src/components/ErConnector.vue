@@ -11,13 +11,15 @@ import type {
   SelfLoopCorner,
   ConnectionPoint,
 } from '../model/types'
-import { getConnectionPoints, snapToEntityEdge, resolveLabelPosition, minMaxLabelPosition, selfLoopPoints } from '../utils/connectionPoints'
+import { getConnectionPoints, snapToConnector, snapToEntityEdge, resolveLabelPosition, minMaxLabelPosition, selfLoopPoints } from '../utils/connectionPoints'
 import {
   bezierPath,
   orthogonalPath,
   polylinePath,
   roundedPolylinePath,
   selfLoopCorners,
+  selfLoopLabelPoint,
+  selfLoopLabelPositionFromPoint,
   selfLoopHandlePoint,
   splitBezierPath,
   splitOrthogonalPath,
@@ -186,6 +188,16 @@ const labelPos = computed(() => {
   const { source, target } = geometry.value
   const stored = store.state.labelPositions[props.relationship.id]
   if (stored) {
+    if (isSelfLoop.value && stored.selfLoop) {
+      const corners = selfLoopCorners(source, target, selfLoopExtent.value, selfLoopCorner.value)
+      return selfLoopLabelPoint(corners, selfLoopCorner.value, stored.selfLoop)
+    }
+    if (isSelfLoop.value) {
+      const corners = selfLoopCorners(source, target, selfLoopExtent.value, selfLoopCorner.value)
+      const legacyPoint = resolveLabelPosition(stored, source.point, target.point)
+      const migrated = selfLoopLabelPositionFromPoint(corners, selfLoopCorner.value, legacyPoint)
+      return selfLoopLabelPoint(corners, selfLoopCorner.value, migrated)
+    }
     return resolveLabelPosition(stored, source.point, target.point)
   }
   if (isSelfLoop.value) {
@@ -195,6 +207,13 @@ const labelPos = computed(() => {
     x: (source.point.x + target.point.x) / 2,
     y: (source.point.y + target.point.y) / 2 - 6,
   }
+})
+
+const labelAnchor = computed(() => {
+  if (!isSelfLoop.value) return 'middle'
+  if (selfLoopCorner.value === 'se') return 'start'
+  if (selfLoopCorner.value === 'nw') return 'end'
+  return 'middle'
 })
 
 // Dim this connector if another is hovered
@@ -213,11 +232,20 @@ const showEndpointHandles = computed(() => !isSelfLoop.value && routeInteraction
 const showRouteHandle = computed(() => routeInteraction.value && !!routeHandle.value)
 
 function onLabelMouseDown(e: MouseEvent) {
-  // Self-loop labels sit at a fixed apex — not draggable (dragging one inside
-  // the card would leave it behind the entity, unreachable)
-  if (isSelfLoop.value) return
   e.preventDefault()
   e.stopPropagation()
+  if (isSelfLoop.value && !store.state.labelPositions[props.relationship.id]) {
+    const { source, target } = geometry.value
+    const defaultPosition = selfLoopLabelPos(source, target)
+    const corners = selfLoopCorners(source, target, selfLoopExtent.value, selfLoopCorner.value)
+    store.setLabelPosition(
+      props.relationship.id,
+      {
+        ...snapToConnector(defaultPosition, source.point, target.point),
+        selfLoop: selfLoopLabelPositionFromPoint(corners, selfLoopCorner.value, defaultPosition),
+      },
+    )
+  }
   store.startDraggingLabel(props.relationship.id)
 }
 
@@ -343,7 +371,7 @@ function onRouteHandleDblClick(e: MouseEvent) {
       :y="labelPos.y"
       class="connector-label"
       :class="{ 'self-loop-label': isSelfLoop }"
-      text-anchor="middle"
+      :text-anchor="labelAnchor"
       dominant-baseline="auto"
       @mouseenter="store.setHoveredConnector(relationship.id)"
       @mouseleave="store.clearHoveredConnector()"
@@ -373,6 +401,7 @@ function onRouteHandleDblClick(e: MouseEvent) {
   pointer-events: auto;
   user-select: none;
   cursor: grab;
+  transition: font-size 0.15s, fill 0.15s;
 }
 
 .minmax-label {
@@ -391,6 +420,12 @@ function onRouteHandleDblClick(e: MouseEvent) {
   font-weight: 600;
 }
 
+.er-connector:hover .connector-label {
+  font-size: 14px;
+  fill: var(--c-connector-hover);
+  font-weight: 600;
+}
+
 .connector-line.barker-optional {
   stroke-dasharray: 1 4;
 }
@@ -401,6 +436,10 @@ function onRouteHandleDblClick(e: MouseEvent) {
 
 .self-loop-label,
 .self-loop-label:active {
-  cursor: default;
+  cursor: grab;
+}
+
+.self-loop-label:active {
+  cursor: grabbing;
 }
 </style>
