@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
-import { snapToEntityEdge, snapToConnector, getConnectionPoints } from '../utils/connectionPoints'
-import { curvedNudgeFromPoint, midOffsetFromPoint, orthogonalRouteEditable } from '../utils/connectorPath'
+import { snapToEntityEdge, snapToConnector, getConnectionPoints, selfLoopPoints, selfLoopCornerFromPoint } from '../utils/connectionPoints'
+import {
+  curvedNudgeFromPoint,
+  midOffsetFromPoint,
+  orthogonalRouteEditable,
+  selfLoopExtentFromPoint,
+} from '../utils/connectorPath'
 import ErEntity from './ErEntity.vue'
 import ErConnector from './ErConnector.vue'
 import ConnectorMarker from './ConnectorMarker.vue'
@@ -168,7 +173,7 @@ function onLabelDragEnd() {
   }
 }
 
-// ─── Mid-route drag (orthogonal midOffset / curved bulge) ────────────────────
+// ─── Mid-route drag (orthogonal / curved / self-loop extent) ─────────────────
 
 function onRouteDragMove(evt: MouseEvent) {
   const drag = store.draggingRoute
@@ -176,7 +181,18 @@ function onRouteDragMove(evt: MouseEvent) {
 
   const pos = screenToModel(evt.clientX, evt.clientY)
   const rel = store.relationships.find(r => r.id === drag.relationshipId)
-  if (!rel || rel.fromEntityId === rel.toEntityId) return
+  if (!rel) return
+
+  if (rel.fromEntityId === rel.toEntityId) {
+    const rect = store.positionOf(rel.fromEntityId)
+    const corner = selfLoopCornerFromPoint(rect, pos)
+    const { source, target } = selfLoopPoints(rect, corner)
+    store.setSelfLoopRoute(drag.relationshipId, {
+      corner,
+      extent: selfLoopExtentFromPoint(source, target, pos, corner),
+    })
+    return
+  }
 
   const customPoints = store.state.connectorPoints[drag.relationshipId]
   const { source, target } = getConnectionPoints(

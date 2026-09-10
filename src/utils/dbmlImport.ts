@@ -324,6 +324,7 @@ export interface DbmlPatch {
   removedEntityIds: string[]
   changedEntityIds: string[]
   removedRelIds: string[]
+  createdRelIds: string[]
   // neighbor (already-placed) entity ids per created entity, for placement
   neighbors: Record<string, string[]>
   stats: DbmlApplyStats
@@ -430,6 +431,7 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
 
   const nextRels: ErRelationship[] = []
   const consumedRelIds = new Set<string>()
+  const createdRelIds: string[] = []
   let createdRels = 0
   let changedRels = 0
   for (const ref of compiled.refs) {
@@ -462,14 +464,16 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
       nextRels.push({ ...match, fromCardinality: wantFrom, toCardinality: wantTo, label: wantLabel })
     } else {
       const [from, to] = defaultCardinalities(ref, nnOf)
+      const id = uniqueId(`rel_${fromId}_${toId}`, taken)
       nextRels.push({
-        id: uniqueId(`rel_${fromId}_${toId}`, taken),
+        id,
         fromEntityId: fromId,
         toEntityId: toId,
         fromCardinality: from,
         toCardinality: to,
         label: ref.label,
       })
+      createdRelIds.push(id)
       createdRels++
     }
 
@@ -540,6 +544,7 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
     removedEntityIds,
     changedEntityIds,
     removedRelIds,
+    createdRelIds,
     neighbors,
     stats,
   }

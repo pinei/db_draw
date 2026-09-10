@@ -1,7 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { DiagramState, PersistedDiagramState, ConnectorStyle, NotationStyle, CodeFormat, ThemeMode, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel, DraggingRoute, RouteOverride } from '../model/types'
+import type { DiagramState, PersistedDiagramState, ConnectorStyle, NotationStyle, CodeFormat, ThemeMode, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel, DraggingRoute, RouteOverride, SelfLoopCorner, SelfLoopRouteOverride } from '../model/types'
 import { bibliotecaSchema } from '../model/sampleData'
+import {
+  SELF_LOOP_DEFAULT_EXTENT,
+  SELF_LOOP_MAX_EXTENT,
+  SELF_LOOP_MIN_EXTENT,
+} from '../utils/connectorPath'
+import { pickFreeSelfLoopCorner } from '../utils/connectionPoints'
 import { saveModel, saveModelSlices, anySaveSlice, AuthError, listModels, loadModel, type ModelSaveSlices } from '../utils/persist'
 import { compileDbml, buildDbmlPatch, type DbmlApplyStats, type DbmlIssueLine } from '../utils/dbmlImport'
 import { defaultMeta, sanitizeTags, seedMeta } from '../utils/modelMeta'
@@ -356,7 +362,43 @@ export const useDiagramStore = defineStore('diagram', () => {
         else next.curved = { along: ca, bulge: cb }
       }
     }
-    if (!next.orthogonal && !next.curved) {
+    writeRouteOverride(relationshipId, next)
+  }
+
+  /** Self-loop corner + extent. Shared across Curved/Orthogonal. null → defaults. */
+  function setSelfLoopRoute(
+    relationshipId: string,
+    value: { corner?: SelfLoopCorner; extent?: number } | null,
+  ) {
+    const existing = state.value.routeOverrides[relationshipId] ?? {}
+    const next: RouteOverride = { ...existing }
+    if (value === null) {
+      delete next.selfLoop
+      writeRouteOverride(relationshipId, next)
+      return
+    }
+    const prev = existing.selfLoop ?? {}
+    const corner = value.corner ?? prev.corner ?? 'ne'
+    const extentRaw = value.extent !== undefined ? value.extent : prev.extent
+    const extent = typeof extentRaw === 'number' && Number.isFinite(extentRaw)
+      ? Math.max(SELF_LOOP_MIN_EXTENT, Math.min(SELF_LOOP_MAX_EXTENT, extentRaw))
+      : SELF_LOOP_DEFAULT_EXTENT
+
+    const atDefaultCorner = corner === 'ne'
+    const atDefaultExtent = Math.abs(extent - SELF_LOOP_DEFAULT_EXTENT) < 0.5
+    if (atDefaultCorner && atDefaultExtent) {
+      delete next.selfLoop
+    } else {
+      const selfLoop: SelfLoopRouteOverride = {}
+      if (!atDefaultCorner) selfLoop.corner = corner
+      if (!atDefaultExtent) selfLoop.extent = extent
+      next.selfLoop = selfLoop
+    }
+    writeRouteOverride(relationshipId, next)
+  }
+
+  function writeRouteOverride(relationshipId: string, next: RouteOverride) {
+    if (!next.orthogonal && !next.curved && !next.selfLoop) {
       delete state.value.routeOverrides[relationshipId]
     } else {
       state.value.routeOverrides[relationshipId] = next
@@ -400,6 +442,31 @@ export const useDiagramStore = defineStore('diagram', () => {
       delete connectorPoints[id]
       delete labelPositions[id]
       delete routeOverrides[id]
+    }
+
+    // New self-loops get an unused corner on their entity (NE→SE→SW→NW)
+    const createdSelfLoops = patch.createdRelIds.filter((id) => {
+      const r = patch.schema.relationships.find((x) => x.id === id)
+      return r && r.fromEntityId === r.toEntityId
+    })
+    for (const id of createdSelfLoops) {
+      if (routeOverrides[id]?.selfLoop?.corner) continue
+      const rel = patch.schema.relationships.find((x) => x.id === id)!
+      const entityId = rel.fromEntityId
+      const used: SelfLoopCorner[] = []
+      for (const r of patch.schema.relationships) {
+        if (r.id === id) continue
+        if (r.fromEntityId !== entityId || r.toEntityId !== entityId) continue
+        // Earlier new loops in this Apply already wrote their corner into routeOverrides
+        used.push(routeOverrides[r.id]?.selfLoop?.corner ?? 'ne')
+      }
+      const corner = pickFreeSelfLoopCorner(used)
+      if (corner === 'ne') continue
+      const prev = routeOverrides[id] ?? {}
+      routeOverrides[id] = {
+        ...prev,
+        selfLoop: { ...prev.selfLoop, corner },
+      }
     }
 
     state.value.schema = patch.schema
@@ -467,8 +534,8 @@ export const useDiagramStore = defineStore('diagram', () => {
     // from the in-memory defaults so a fresh load starts with sane UI state
     // (unknown notationStyle from older artifacts falls back to crowsfoot)
     const validNotations: NotationStyle[] = ['crowsfoot', 'minmax', 'barker']
-    // Self-loops use fully derived geometry — drop any stored overrides
-    // (stale values would stick labels/handles inside the card, unreachable)
+    // Self-loops: fixed endpoints + undraggable labels — drop stale point/label
+    // overrides. Keep selfLoop.corner + extent; ignore curved/ortho on loops.
     const entityPositions = { ...loaded.entityPositions }
     const labelPositions = { ...loaded.labelPositions }
     const connectorPoints = { ...loaded.connectorPoints }
@@ -477,7 +544,24 @@ export const useDiagramStore = defineStore('diagram', () => {
       if (rel.fromEntityId === rel.toEntityId) {
         delete labelPositions[rel.id]
         delete connectorPoints[rel.id]
-        delete routeOverrides[rel.id]
+        const kept = routeOverrides[rel.id]?.selfLoop
+        if (!kept) {
+          delete routeOverrides[rel.id]
+          continue
+        }
+        const selfLoop: SelfLoopRouteOverride = {}
+        if (kept.corner === 'ne' || kept.corner === 'se' || kept.corner === 'sw' || kept.corner === 'nw') {
+          if (kept.corner !== 'ne') selfLoop.corner = kept.corner
+        }
+        if (typeof kept.extent === 'number' && Number.isFinite(kept.extent)) {
+          const e = Math.max(SELF_LOOP_MIN_EXTENT, Math.min(SELF_LOOP_MAX_EXTENT, kept.extent))
+          if (Math.abs(e - SELF_LOOP_DEFAULT_EXTENT) >= 0.5) selfLoop.extent = e
+        }
+        if (selfLoop.corner || selfLoop.extent !== undefined) {
+          routeOverrides[rel.id] = { selfLoop }
+        } else {
+          delete routeOverrides[rel.id]
+        }
       }
     }
     // Backfill curved.along for artifacts saved before along existed
@@ -663,6 +747,7 @@ export const useDiagramStore = defineStore('diagram', () => {
     endDraggingLabel,
     draggingRoute,
     setRouteOverride,
+    setSelfLoopRoute,
     startDraggingRoute,
     endDraggingRoute,
     saveStatus,

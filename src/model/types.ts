@@ -99,9 +99,21 @@ export interface CurvedRouteOverride {
   bulge: number
 }
 
+/** Clockwise self-loop slot around an entity card (default NE = current behavior). */
+export type SelfLoopCorner = 'ne' | 'se' | 'sw' | 'nw'
+
+/** Self-loop route (same for Curved and Orthogonal — shared geometry). */
+export interface SelfLoopRouteOverride {
+  /** Which corner of the entity the square loop occupies; default `ne`. */
+  corner?: SelfLoopCorner
+  /** Outward px for the square loop (default ~56); larger = bigger loop. */
+  extent?: number
+}
+
 export interface RouteOverride {
   orthogonal?: OrthogonalRouteOverride
   curved?: CurvedRouteOverride
+  selfLoop?: SelfLoopRouteOverride
 }
 
 // ─── Diagram State (presentation model) ─────────────────────────────────────

@@ -1,4 +1,4 @@
-import type { ConnectionPoint, EdgeSide, Point } from '../model/types'
+import type { ConnectionPoint, EdgeSide, Point, SelfLoopCorner } from '../model/types'
 
 // Control point distance for bezier curves, as a fraction of the segment length
 const BEZIER_TENSION = 0.45
@@ -274,26 +274,116 @@ export function midOffsetFromPoint(src: ConnectionPoint, tgt: ConnectionPoint, m
   return (midY - (p1.y + p2.y) / 2) / span
 }
 
-/**
- * Explicit outside corners for a self-loop. The route goes up from the
- * top-edge exit, right past the card, down, and back left into the
- * right-edge entry — every segment stays outside the entity rect.
- * Curved style fillets these corners; Orthogonal keeps them sharp.
- */
-export function selfLoopCorners(source: ConnectionPoint, target: ConnectionPoint, loop = 56): Point[] {
-  const top = source.point.y - loop
-  const right = target.point.x + loop
-  return [
-    source.point,
-    { x: source.point.x, y: top },
-    { x: right, y: top },
-    { x: right, y: target.point.y },
-    target.point,
-  ]
+/** Default outward clearance for self-loop square path (px). */
+export const SELF_LOOP_DEFAULT_EXTENT = 56
+/** Min clearance — keeps room for fillets / markers outside the card. */
+export const SELF_LOOP_MIN_EXTENT = 32
+export const SELF_LOOP_MAX_EXTENT = 240
+
+export function clampSelfLoopExtent(extent: number): number {
+  if (!Number.isFinite(extent)) return SELF_LOOP_DEFAULT_EXTENT
+  return Math.max(SELF_LOOP_MIN_EXTENT, Math.min(SELF_LOOP_MAX_EXTENT, extent))
 }
 
-// Corner radius for self-loop rendering (well below the 56px loop clearance,
-// so the smoothed curve provably stays outside the entity rect)
+/**
+ * Explicit outside corners for a self-loop at a given card corner.
+ * Curved style fillets these; Orthogonal keeps them sharp.
+ */
+export function selfLoopCorners(
+  source: ConnectionPoint,
+  target: ConnectionPoint,
+  extent = SELF_LOOP_DEFAULT_EXTENT,
+  corner: SelfLoopCorner = 'ne',
+): Point[] {
+  const e = clampSelfLoopExtent(extent)
+  const sx = source.point.x
+  const sy = source.point.y
+  const tx = target.point.x
+  const ty = target.point.y
+  switch (corner) {
+    case 'ne':
+      return [
+        source.point,
+        { x: sx, y: sy - e },
+        { x: tx + e, y: sy - e },
+        { x: tx + e, y: ty },
+        target.point,
+      ]
+    case 'se':
+      return [
+        source.point,
+        { x: sx + e, y: sy },
+        { x: sx + e, y: ty + e },
+        { x: tx, y: ty + e },
+        target.point,
+      ]
+    case 'sw':
+      return [
+        source.point,
+        { x: sx, y: sy + e },
+        { x: tx - e, y: sy + e },
+        { x: tx - e, y: ty },
+        target.point,
+      ]
+    case 'nw':
+      return [
+        source.point,
+        { x: sx - e, y: sy },
+        { x: sx - e, y: ty - e },
+        { x: tx, y: ty - e },
+        target.point,
+      ]
+  }
+}
+
+/** Outer corner handle — dragging grows/shrinks the square loop (and can change corner). */
+export function selfLoopHandlePoint(
+  source: ConnectionPoint,
+  target: ConnectionPoint,
+  extent = SELF_LOOP_DEFAULT_EXTENT,
+  corner: SelfLoopCorner = 'ne',
+): Point {
+  const corners = selfLoopCorners(source, target, extent, corner)
+  return corners[2]
+}
+
+/**
+ * Map pointer → loop extent for the active corner.
+ * Each corner expands along its outward diagonal from the inner L pivot.
+ */
+export function selfLoopExtentFromPoint(
+  source: ConnectionPoint,
+  target: ConnectionPoint,
+  mouse: Point,
+  corner: SelfLoopCorner = 'ne',
+): number {
+  const sx = source.point.x
+  const sy = source.point.y
+  const tx = target.point.x
+  const ty = target.point.y
+  const mx = mouse.x
+  const my = mouse.y
+  let raw: number
+  switch (corner) {
+    case 'ne':
+      raw = ((mx - tx) - (my - sy)) / 2
+      break
+    case 'se':
+      raw = ((mx - sx) + (my - ty)) / 2
+      break
+    case 'sw':
+      raw = ((tx - mx) + (my - sy)) / 2
+      break
+    case 'nw':
+      raw = ((sx - mx) + (ty - my)) / 2
+      break
+  }
+  return clampSelfLoopExtent(raw)
+}
+
+// Corner radius for self-loop rendering (well below the default loop clearance,
+// so the smoothed curve provably stays outside the entity rect; also clamped
+// per-segment in buildRoundedPolyline when extent is smaller)
 export const SELF_LOOP_CORNER_RADIUS = 24
 
 type PathSeg =

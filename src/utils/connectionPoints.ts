@@ -1,4 +1,13 @@
-import type { EntityRect, ConnectionPoint, EdgeSide, Point, CustomConnectionPoints, CustomConnectorEndpoint, LabelPosition } from '../model/types'
+import type {
+  EntityRect,
+  ConnectionPoint,
+  EdgeSide,
+  Point,
+  CustomConnectionPoints,
+  CustomConnectorEndpoint,
+  LabelPosition,
+  SelfLoopCorner,
+} from '../model/types'
 
 // Pulls connection points away from entity edge so markers don't get occluded by the card
 const MARKER_CLEARANCE = 12
@@ -154,22 +163,78 @@ export function minMaxLabelPosition(conn: ConnectionPoint, entity: EntityRect): 
     : { x: lx, y: ly + g, anchor, baseline: 'hanging' }
 }
 
-// Self-loop anchor fractions (fromEntityId === toEntityId)
-const SELF_LOOP_FROM_FRACTION = 0.75 // exit: top edge
-const SELF_LOOP_TO_FRACTION = 0.25   // enter: right edge
+// Self-loop anchors (fromEntityId === toEntityId) — clockwise around each corner
+const SELF_LOOP_ANCHORS: Record<SelfLoopCorner, {
+  fromSide: EdgeSide
+  fromFrac: number
+  toSide: EdgeSide
+  toFrac: number
+}> = {
+  ne: { fromSide: 'top', fromFrac: 0.75, toSide: 'right', toFrac: 0.25 },
+  se: { fromSide: 'right', fromFrac: 0.75, toSide: 'bottom', toFrac: 0.75 },
+  sw: { fromSide: 'bottom', fromFrac: 0.25, toSide: 'left', toFrac: 0.75 },
+  nw: { fromSide: 'left', fromFrac: 0.25, toSide: 'top', toFrac: 0.25 },
+}
+
+export const SELF_LOOP_CORNERS: SelfLoopCorner[] = ['ne', 'se', 'sw', 'nw']
+
+function pointOnEdge(rect: EntityRect, side: EdgeSide, fraction: number): Point {
+  const c = MARKER_CLEARANCE
+  switch (side) {
+    case 'top':
+      return { x: rect.x + rect.width * fraction, y: rect.y - c }
+    case 'bottom':
+      return { x: rect.x + rect.width * fraction, y: rect.y + rect.height + c }
+    case 'left':
+      return { x: rect.x - c, y: rect.y + rect.height * fraction }
+    case 'right':
+      return { x: rect.x + rect.width + c, y: rect.y + rect.height * fraction }
+  }
+}
 
 /**
- * Fixed endpoints for a self-loop: exits the top edge, re-enters the right
- * edge. Custom points don't apply — the loop geometry is fully determined
- * by the entity rect, so it never degenerates (unlike best-pair routing,
- * which would pick the same point twice on one rect).
+ * Endpoints for a self-loop at a given corner. Custom points don't apply —
+ * the loop geometry is fully determined by the entity rect + corner slot.
  */
-export function selfLoopPoints(rect: EntityRect): { source: ConnectionPoint; target: ConnectionPoint } {
-  const c = MARKER_CLEARANCE
+export function selfLoopPoints(
+  rect: EntityRect,
+  corner: SelfLoopCorner = 'ne',
+): { source: ConnectionPoint; target: ConnectionPoint } {
+  const a = SELF_LOOP_ANCHORS[corner]
   return {
-    source: { point: { x: rect.x + rect.width * SELF_LOOP_FROM_FRACTION, y: rect.y - c }, side: 'top' },
-    target: { point: { x: rect.x + rect.width + c, y: rect.y + rect.height * SELF_LOOP_TO_FRACTION }, side: 'right' },
+    source: { point: pointOnEdge(rect, a.fromSide, a.fromFrac), side: a.fromSide },
+    target: { point: pointOnEdge(rect, a.toSide, a.toFrac), side: a.toSide },
   }
+}
+
+/** Prefer unused corners in NE→SE→SW→NW order; if all taken, the least-used. */
+export function pickFreeSelfLoopCorner(used: SelfLoopCorner[]): SelfLoopCorner {
+  for (const c of SELF_LOOP_CORNERS) {
+    if (!used.includes(c)) return c
+  }
+  const counts = Object.fromEntries(SELF_LOOP_CORNERS.map((c) => [c, 0])) as Record<SelfLoopCorner, number>
+  for (const c of used) counts[c]++
+  let best: SelfLoopCorner = 'ne'
+  let bestN = Infinity
+  for (const c of SELF_LOOP_CORNERS) {
+    if (counts[c] < bestN) {
+      bestN = counts[c]
+      best = c
+    }
+  }
+  return best
+}
+
+/** Quadrant of `mouse` relative to the entity center → self-loop corner. */
+export function selfLoopCornerFromPoint(rect: EntityRect, mouse: Point): SelfLoopCorner {
+  const cx = rect.x + rect.width / 2
+  const cy = rect.y + rect.height / 2
+  const east = mouse.x >= cx
+  const south = mouse.y >= cy
+  if (east && !south) return 'ne'
+  if (east && south) return 'se'
+  if (!east && south) return 'sw'
+  return 'nw'
 }
 
 /** Projects an absolute point onto a connector line, returning {fraction, perp} relative coords. */

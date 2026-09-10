@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useDiagramStore } from '../stores/diagram'
-import type { ErRelationship, EntityRect, ConnectorStyle, NotationStyle, Cardinality, LogicalCardinality } from '../model/types'
+import type {
+  ErRelationship,
+  EntityRect,
+  ConnectorStyle,
+  NotationStyle,
+  Cardinality,
+  LogicalCardinality,
+  SelfLoopCorner,
+  ConnectionPoint,
+} from '../model/types'
 import { getConnectionPoints, snapToEntityEdge, resolveLabelPosition, minMaxLabelPosition, selfLoopPoints } from '../utils/connectionPoints'
 import {
   bezierPath,
@@ -9,6 +18,7 @@ import {
   polylinePath,
   roundedPolylinePath,
   selfLoopCorners,
+  selfLoopHandlePoint,
   splitBezierPath,
   splitOrthogonalPath,
   splitPolyline,
@@ -17,6 +27,7 @@ import {
   orthogonalHandlePoint,
   orthogonalRouteEditable,
   SELF_LOOP_CORNER_RADIUS,
+  SELF_LOOP_DEFAULT_EXTENT,
 } from '../utils/connectorPath'
 
 const props = defineProps<{
@@ -29,12 +40,19 @@ const props = defineProps<{
 
 const store = useDiagramStore()
 
-// Self-loops use a fixed loop (top edge → right edge) instead of best-pair
-// routing, which would degenerate to the same point twice on one rect
+// Self-loops use a corner slot (default NE) instead of best-pair routing
 const isSelfLoop = computed(() => props.relationship.fromEntityId === props.relationship.toEntityId)
 
+const selfLoopCorner = computed((): SelfLoopCorner =>
+  store.state.routeOverrides[props.relationship.id]?.selfLoop?.corner ?? 'ne',
+)
+
+const selfLoopExtent = computed(() =>
+  store.state.routeOverrides[props.relationship.id]?.selfLoop?.extent ?? SELF_LOOP_DEFAULT_EXTENT,
+)
+
 const geometry = computed(() => {
-  if (isSelfLoop.value) return selfLoopPoints(props.fromRect)
+  if (isSelfLoop.value) return selfLoopPoints(props.fromRect, selfLoopCorner.value)
   const customPoints = store.state.connectorPoints[props.relationship.id]
   return getConnectionPoints(props.fromRect, props.toRect, customPoints)
 })
@@ -57,7 +75,7 @@ const curvedNudge = computed(() => {
 const pathData = computed(() => {
   const { source, target } = geometry.value
   if (isSelfLoop.value) {
-    const corners = selfLoopCorners(source, target)
+    const corners = selfLoopCorners(source, target, selfLoopExtent.value, selfLoopCorner.value)
     return props.connectorStyle === 'curved'
       ? roundedPolylinePath(corners, SELF_LOOP_CORNER_RADIUS)
       : polylinePath(corners)
@@ -68,8 +86,10 @@ const pathData = computed(() => {
 })
 
 const routeHandle = computed(() => {
-  if (isSelfLoop.value) return null
   const { source, target } = geometry.value
+  if (isSelfLoop.value) {
+    return selfLoopHandlePoint(source, target, selfLoopExtent.value, selfLoopCorner.value)
+  }
   if (props.connectorStyle === 'curved') {
     return bezierHandlePoint(source, target, curvedNudge.value)
   }
@@ -91,7 +111,7 @@ const barkerHalves = computed(() => {
   if (!isBarker.value) return null
   const { source, target } = geometry.value
   if (isSelfLoop.value) {
-    const corners = selfLoopCorners(source, target)
+    const corners = selfLoopCorners(source, target, selfLoopExtent.value, selfLoopCorner.value)
     return props.connectorStyle === 'curved'
       ? splitRoundedPolyline(corners, SELF_LOOP_CORNER_RADIUS)
       : splitPolyline(corners)
@@ -144,8 +164,23 @@ const markerStart = computed(() => {
   return `url(#${base})`
 })
 
+function selfLoopLabelPos(
+  source: ConnectionPoint,
+  target: ConnectionPoint,
+): { x: number; y: number } {
+  const corners = selfLoopCorners(source, target, selfLoopExtent.value, selfLoopCorner.value)
+  const mx = (corners[1].x + corners[2].x) / 2
+  const my = (corners[1].y + corners[2].y) / 2
+  switch (selfLoopCorner.value) {
+    case 'ne': return { x: mx, y: my - 8 }
+    case 'se': return { x: mx + 8, y: my }
+    case 'sw': return { x: mx, y: my + 8 }
+    case 'nw': return { x: mx - 8, y: my }
+  }
+}
+
 // Label position: use stored {fraction, perp} if available, otherwise midpoint
-// with default offset — or the loop apex for self-loops (the chord midpoint
+// with default offset — or outside the loop for self-loops (chord midpoint
 // would fall inside the entity card)
 const labelPos = computed(() => {
   const { source, target } = geometry.value
@@ -154,9 +189,7 @@ const labelPos = computed(() => {
     return resolveLabelPosition(stored, source.point, target.point)
   }
   if (isSelfLoop.value) {
-    // Above the loop's top bar (same geometry in both connector styles)
-    const corners = selfLoopCorners(source, target)
-    return { x: (corners[1].x + corners[2].x) / 2, y: corners[1].y - 8 }
+    return selfLoopLabelPos(source, target)
   }
   return {
     x: (source.point.x + target.point.x) / 2,
@@ -169,14 +202,15 @@ const isDimmed = computed(() => {
   return store.hoveredConnectorId !== null && store.hoveredConnectorId !== props.relationship.id
 })
 
-// Show drag handles only when this connector is hovered (and not dimmed).
-// Self-loops use fixed geometry (custom points don't apply), so no handles.
-// Keep visible while this connector's route mid is being dragged.
-const showHandles = computed(() => {
-  if (isSelfLoop.value) return false
+// Endpoint handles: not for self-loops (fixed geometry). Mid-route handle
+// works for both — self-loops scale outward extent / corner; others nudge mid.
+const routeInteraction = computed(() => {
   if (store.draggingRoute?.relationshipId === props.relationship.id) return true
   return store.hoveredConnectorId === props.relationship.id
 })
+
+const showEndpointHandles = computed(() => !isSelfLoop.value && routeInteraction.value)
+const showRouteHandle = computed(() => routeInteraction.value && !!routeHandle.value)
 
 function onLabelMouseDown(e: MouseEvent) {
   // Self-loop labels sit at a fixed apex — not draggable (dragging one inside
@@ -207,6 +241,14 @@ function onRouteHandleMouseDown(e: MouseEvent) {
 function onRouteHandleDblClick(e: MouseEvent) {
   e.preventDefault()
   e.stopPropagation()
+  if (isSelfLoop.value) {
+    // Reset extent only — keep the corner slot
+    store.setSelfLoopRoute(props.relationship.id, {
+      corner: selfLoopCorner.value,
+      extent: SELF_LOOP_DEFAULT_EXTENT,
+    })
+    return
+  }
   store.setRouteOverride(props.relationship.id, props.connectorStyle, null)
 }
 </script>
@@ -270,7 +312,7 @@ function onRouteHandleDblClick(e: MouseEvent) {
     >{{ minMaxTo }}</text>
     <!-- Drag handles for connection points (visible on hover) -->
     <circle
-      v-if="showHandles"
+      v-if="showEndpointHandles"
       :cx="geometry.source.point.x"
       :cy="geometry.source.point.y"
       r="6"
@@ -278,16 +320,16 @@ function onRouteHandleDblClick(e: MouseEvent) {
       @mousedown="onHandleMouseDown('from', $event)"
     />
     <circle
-      v-if="showHandles"
+      v-if="showEndpointHandles"
       :cx="geometry.target.point.x"
       :cy="geometry.target.point.y"
       r="6"
       class="connector-handle"
       @mousedown="onHandleMouseDown('to', $event)"
     />
-    <!-- Mid-route handle: orthogonal midOffset / curved bulge (dblclick resets) -->
+    <!-- Mid-route handle: ortho/curved nudge, or self-loop extent (dblclick resets) -->
     <circle
-      v-if="showHandles && routeHandle"
+      v-if="showRouteHandle && routeHandle"
       :cx="routeHandle.x"
       :cy="routeHandle.y"
       r="5"
