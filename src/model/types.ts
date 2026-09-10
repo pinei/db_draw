@@ -30,6 +30,7 @@ export interface ErRelationship {
   fromCardinality: Cardinality
   toCardinality: Cardinality
   label?: string
+  refName?: string
 }
 
 export interface ErSchema {

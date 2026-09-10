@@ -52,8 +52,9 @@ function relLine(rel: ErRelationship, sides: FkSides): string {
   const fromCol = fkOnTo ? pkFieldName(fromEntity) : (fkOnFrom?.name ?? 'id')
   const toCol = fkOnTo ? fkOnTo.name : pkFieldName(toEntity)
   const op = cardinalityToDbmlOp(rel.fromCardinality, rel.toCardinality)
-  const comment = rel.label ? ` // ${rel.label}` : ''
-  return `Ref: ${fromEntity.name}.${fromCol} ${op} ${toEntity.name}.${toCol}${comment}`
+  const refPrefix = rel.refName ? `Ref ${rel.refName}:` : 'Ref:'
+  const comment = !rel.refName && rel.label ? ` // ${rel.label}` : ''
+  return `${refPrefix} ${fromEntity.name}.${fromCol} ${op} ${toEntity.name}.${toCol}${comment}`
 }
 
 export function generateDbml(schema: ErSchema): string {

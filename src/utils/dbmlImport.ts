@@ -84,6 +84,7 @@ export interface NormalizedRef {
   fromMany: boolean
   toMany: boolean
   label?: string
+  refName?: string
 }
 
 export interface CompiledDbml {
@@ -129,9 +130,9 @@ function compileSource(text: string) {
   return new Compiler(project).interpretFile(filepath)
 }
 
-// Single-line `Ref: A.x <> B.y // label` — the form we generate and the common
-// hand-typed form (long-form `Ref { ... }` blocks are out of scope)
-const REF_LINE_RE = /^\s*Ref:\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*(<>|>|<|-)\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)(?:\s*\/\/(.*))?$/
+// Single-line `Ref: A.x <> B.y // label` and named `Ref name: A.x <> B.y` —
+// both are accepted; long-form `Ref { ... }` blocks remain out of scope.
+const REF_LINE_RE = /^\s*Ref(?:\s+([A-Za-z_]\w*))?:\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*(<>|>|<|-)\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)(?:\s*\/\/(.*))?$/
 
 function opToMany(op: string): [boolean, boolean] {
   if (op === '<>') return [true, true]
@@ -173,9 +174,9 @@ export function compileDbml(
       const line = lines[i] ?? ''
       const m = REF_LINE_RE.exec(line)
       if (m) {
-        const [, t, f, op] = m
+        const [, refName, t, f, op] = m
         const [fromMany, toMany] = opToMany(op)
-        selfLoopRefs.push({ fromTable: t, fromField: f, toTable: t, toField: f, fromMany, toMany })
+        selfLoopRefs.push({ fromTable: t, fromField: f, toTable: t, toField: f, fromMany, toMany, refName: refName || undefined })
       } else {
         ignored++ // long-form self-ref: can't map, counted as ignored
       }
@@ -206,14 +207,24 @@ export function compileDbml(
   for (const line of working.split('\n')) {
     const m = REF_LINE_RE.exec(line)
     if (!m) continue
-    const [, fromTable, fromField, op, toTable, toField, comment] = m
+    const [, refName, fromTable, fromField, op, toTable, toField, comment] = m
     if (!knownTables.has(fromTable) || !knownTables.has(toTable)) {
       ignored++ // unreachable post-validation, but never crash on it
       continue
     }
     const [fromMany, toMany] = opToMany(op)
-    const label = comment?.trim() || undefined
-    refs.push({ fromTable, fromField, toTable, toField, fromMany, toMany, label })
+    const name = refName || undefined
+    const commentLabel = comment?.trim() || undefined
+    refs.push({
+      fromTable,
+      fromField,
+      toTable,
+      toField,
+      fromMany,
+      toMany,
+      label: name ?? commentLabel,
+      refName: name,
+    })
   }
 
   // Inline `[ref: > T.f]` refs from the AST
@@ -461,7 +472,7 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
       if (wantFrom !== match.fromCardinality || wantTo !== match.toCardinality || wantLabel !== match.label) {
         changedRels++
       }
-      nextRels.push({ ...match, fromCardinality: wantFrom, toCardinality: wantTo, label: wantLabel })
+      nextRels.push({ ...match, fromCardinality: wantFrom, toCardinality: wantTo, label: wantLabel, refName: ref.refName })
     } else {
       const [from, to] = defaultCardinalities(ref, nnOf)
       const id = uniqueId(`rel_${fromId}_${toId}`, taken)
@@ -472,6 +483,7 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
         fromCardinality: from,
         toCardinality: to,
         label: ref.label,
+        refName: ref.refName,
       })
       createdRelIds.push(id)
       createdRels++
