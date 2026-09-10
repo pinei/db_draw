@@ -324,10 +324,10 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   background: var(--c-canvas-bg);
-  cursor: default;
+  cursor: move;
 }
 
 .diagram-canvas.panning {
-  cursor: grabbing;
+  cursor: move;
 }
 </style>
