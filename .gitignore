@@ -1,9 +1,7 @@
 node_modules
 dist
 .DS_Store
-data/user/
-data/sessions/
-data/tickets/
+data/*
 .env
 .env.local
 .env.*.local
