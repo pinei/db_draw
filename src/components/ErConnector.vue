@@ -339,6 +339,14 @@ function onRouteHandleDblClick(e: MouseEvent) {
   fill: var(--c-connector-label);
   user-select: none;
   pointer-events: none;
+  transition: font-size 0.15s, fill 0.15s;
+}
+
+/* Match marker emphasis on hover (markers grow via stroke-width; text needs this) */
+.er-connector:hover .minmax-label {
+  font-size: 13px;
+  fill: var(--c-connector-hover);
+  font-weight: 600;
 }
 
 .connector-line.barker-optional {
