@@ -10,12 +10,18 @@ import {
   selfLoopExtentFromPoint,
   selfLoopLabelPositionFromPoint,
 } from '../utils/connectorPath'
+import {
+  ENTITY_HEIGHT_SNAP_TOLERANCE,
+  entityMinimumHeight,
+  entityNaturalHeight,
+} from '../utils/entityGeometry'
 import ErEntity from './ErEntity.vue'
 import ErConnector from './ErConnector.vue'
 import ConnectorMarker from './ConnectorMarker.vue'
 
 const store = useDiagramStore()
 const layout = computed(() => store.layout)
+const naturalHeights = ref<Record<string, number>>({})
 
 // ─── Pan state ──────────────────────────────────────────────────────────────
 
@@ -82,6 +88,7 @@ const canvasTransform = computed(() => {
 const svgEl = ref<SVGSVGElement | null>(null)
 const draggingEntityId = ref<string | null>(null)
 const resizingEntityId = ref<string | null>(null)
+const resizingHeightEntityId = ref<string | null>(null)
 let entityDragOffsetX = 0
 let entityDragOffsetY = 0
 
@@ -141,6 +148,38 @@ function onEntityResizeEnd() {
   resizingEntityId.value = null
   window.removeEventListener('mousemove', onEntityResizeMove)
   window.removeEventListener('mouseup', onEntityResizeEnd)
+}
+
+function onEntityNaturalHeight(id: string, height: number) {
+  naturalHeights.value[id] = height
+}
+
+function onEntityHeightResizeStart(id: string, evt: MouseEvent) {
+  resizingHeightEntityId.value = id
+  window.addEventListener('mousemove', onEntityHeightResizeMove)
+  window.addEventListener('mouseup', onEntityHeightResizeEnd)
+  evt.preventDefault()
+}
+
+function onEntityHeightResizeMove(evt: MouseEvent) {
+  if (!resizingHeightEntityId.value) return
+  const id = resizingHeightEntityId.value
+  const rect = store.positionOf(id)
+  const entity = store.entities.find((item) => item.id === id)
+  if (!entity) return
+
+  const pos = screenToModel(evt.clientX, evt.clientY)
+  const natural = naturalHeights.value[id] ?? entityNaturalHeight(entity.fields.length)
+  const minimum = entityMinimumHeight(entity.fields.length)
+  const proposed = Math.max(minimum, Math.min(natural, pos.y - rect.y))
+  const height = Math.abs(proposed - natural) <= ENTITY_HEIGHT_SNAP_TOLERANCE ? natural : proposed
+  store.updateEntitySize(id, rect.width, height)
+}
+
+function onEntityHeightResizeEnd() {
+  resizingHeightEntityId.value = null
+  window.removeEventListener('mousemove', onEntityHeightResizeMove)
+  window.removeEventListener('mouseup', onEntityHeightResizeEnd)
 }
 
 function onEntityResize(id: string, width: number, height: number) {
@@ -272,6 +311,12 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('mousemove', onEntityDragMove)
+  window.removeEventListener('mouseup', onEntityDragEnd)
+  window.removeEventListener('mousemove', onEntityResizeMove)
+  window.removeEventListener('mouseup', onEntityResizeEnd)
+  window.removeEventListener('mousemove', onEntityHeightResizeMove)
+  window.removeEventListener('mouseup', onEntityHeightResizeEnd)
   window.removeEventListener('mousemove', onConnectorPointDragMove)
   window.removeEventListener('mouseup', onConnectorPointDragEnd)
   window.removeEventListener('mousemove', onLabelDragMove)
@@ -313,6 +358,8 @@ onUnmounted(() => {
         @dragstart="onEntityDragStart"
         @resize="onEntityResize"
         @resizestart="onEntityResizeStart"
+        @heightresizestart="onEntityHeightResizeStart"
+        @naturalheight="onEntityNaturalHeight"
       />
     </g>
   </svg>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import type { ErEntity, EntityRect } from '../model/types'
+import { ENTITY_HEIGHT_SNAP_TOLERANCE } from '../utils/entityGeometry'
 
 const props = defineProps<{
   entity: ErEntity
@@ -12,17 +13,36 @@ const emit = defineEmits<{
   dragstart: [id: string, evt: MouseEvent]
   resize: [id: string, width: number, height: number]
   resizestart: [id: string, evt: MouseEvent]
+  heightresizestart: [id: string, evt: MouseEvent]
+  naturalheight: [id: string, height: number]
 }>()
 
 // foreignObject element ref for measuring actual rendered height
 const cardRef = ref<HTMLElement | null>(null)
+const naturalHeight = ref<number | null>(null)
+const contentHidden = computed(() => naturalHeight.value !== null && props.rect.height < naturalHeight.value - 1)
 
 // scrollHeight (not offsetHeight: the card is height:100% + overflow:hidden,
 // so offsetHeight is just the clipped box) — grows AND shrinks with content
 function syncHeight() {
   if (!cardRef.value) return
   const h = cardRef.value.scrollHeight
-  if (h > 0 && Math.abs(h - props.rect.height) > 2) {
+  if (h <= 0) return
+
+  const previousNaturalHeight = naturalHeight.value
+  naturalHeight.value = h
+  emit('naturalheight', props.entity.id, h)
+
+  if (previousNaturalHeight === null) {
+    // A stored height below the natural size is a deliberate collapsed view.
+    if (props.rect.height >= h - 2 && Math.abs(h - props.rect.height) > 2) {
+      emit('resize', props.entity.id, props.rect.width, h)
+    }
+    return
+  }
+
+  const wasNatural = Math.abs(props.rect.height - previousNaturalHeight) <= ENTITY_HEIGHT_SNAP_TOLERANCE
+  if (wasNatural && Math.abs(h - props.rect.height) > 2) {
     emit('resize', props.entity.id, props.rect.width, h)
   }
 }
@@ -48,6 +68,13 @@ function onResizeMouseDown(evt: MouseEvent) {
   evt.preventDefault()
   evt.stopPropagation()
   emit('resizestart', props.entity.id, evt)
+}
+
+function onHeightResizeMouseDown(evt: MouseEvent) {
+  if (evt.button !== 0) return
+  evt.preventDefault()
+  evt.stopPropagation()
+  emit('heightresizestart', props.entity.id, evt)
 }
 </script>
 
@@ -89,6 +116,7 @@ function onResizeMouseDown(evt: MouseEvent) {
             <span class="field-type">{{ field.type }}</span>
           </li>
         </ul>
+        <div v-if="contentHidden" class="entity-content-hidden" aria-hidden="true">...</div>
       </div>
     </foreignObject>
 
@@ -97,9 +125,19 @@ function onResizeMouseDown(evt: MouseEvent) {
       :x="rect.width - 6"
       y="0"
       width="12"
-      :height="rect.height"
+      :height="Math.max(0, rect.height - 12)"
       class="entity-width-handle"
       @mousedown="onResizeMouseDown"
+    />
+
+    <!-- Invisible grab area for reducing or restoring the card height. -->
+    <rect
+      x="0"
+      :y="rect.height - 6"
+      :width="Math.max(0, rect.width - 12)"
+      height="12"
+      class="entity-height-handle"
+      @mousedown="onHeightResizeMouseDown"
     />
   </g>
 </template>
@@ -120,6 +158,12 @@ function onResizeMouseDown(evt: MouseEvent) {
   pointer-events: all;
 }
 
+.entity-height-handle {
+  fill: transparent;
+  cursor: ns-resize;
+  pointer-events: all;
+}
+
 .entity-bg {
   fill: var(--c-entity-bg);
   stroke: var(--c-entity-border);
@@ -137,12 +181,29 @@ function onResizeMouseDown(evt: MouseEvent) {
 /* ── HTML card inside foreignObject ─────────────────────────────── */
 
 .entity-card {
+  position: relative;
   font-family: var(--font-mono);
   font-size: 12px;
   overflow: hidden;
   border-radius: 6px;
   height: 100%;
   box-sizing: border-box;
+}
+
+.entity-content-hidden {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 20px;
+  background: linear-gradient(to bottom, transparent, var(--c-entity-bg) 65%);
+  color: var(--c-field-type);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  pointer-events: none;
 }
 
 .entity-header {
