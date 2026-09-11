@@ -199,9 +199,9 @@ function onHeightResizeMouseDown(evt: MouseEvent) {
   background: linear-gradient(to bottom, transparent, var(--c-entity-bg) 65%);
   color: var(--c-field-type);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
-  line-height: 20px;
+  line-height: 12px;
   text-align: center;
   pointer-events: none;
 }
