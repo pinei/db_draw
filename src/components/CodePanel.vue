@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { ChevronDown, ChevronRight, CircleQuestionMark, Code, X } from 'lucide-vue-next'
 import { useDiagramStore } from '../stores/diagram'
 import { useAuthStore } from '../stores/auth'
 import { generateDbml, generateMermaid } from '../utils/codePlaceholder'
@@ -270,11 +271,12 @@ function scrollToLine(line: number) {
   <div ref="panelEl" class="code-panel" :class="{ expanded: layout.codePanelOpen, collapsed: !layout.codePanelOpen }">
     <div class="panel-header" @click="store.toggleCodePanel()">
       <span class="panel-title">
-        <span class="panel-icon">⟨/⟩</span>
+        <Code :size="14" class="panel-icon" />
         Diagram Code
       </span>
       <button class="collapse-btn" :title="layout.codePanelOpen ? 'Collapse' : 'Expand'">
-        {{ layout.codePanelOpen ? '▾' : '▸' }}
+        <ChevronDown v-if="layout.codePanelOpen" :size="14" />
+        <ChevronRight v-else :size="14" />
       </button>
     </div>
 
@@ -301,7 +303,7 @@ function scrollToLine(line: number) {
           title="Open DBML syntax documentation"
           @click.stop
         >
-          <span class="docs-icon" aria-hidden="true">?</span>
+          <CircleQuestionMark :size="14" class="docs-icon" aria-hidden="true" />
           DBML Syntax
         </a>
 
@@ -331,7 +333,7 @@ function scrollToLine(line: number) {
         <button class="apply-btn" :disabled="!isEditable" @click="handleApply">Apply</button>
 
         <div v-if="parseStatus === 'success' && applyStats" class="parse-message success">
-          <button type="button" class="apply-dismiss" title="Dismiss" aria-label="Dismiss" @click="dismissApplyResult">×</button>
+          <button type="button" class="apply-dismiss" title="Dismiss" aria-label="Dismiss" @click="dismissApplyResult"><X :size="12" /></button>
           <div class="apply-title">Applied</div>
           <div class="apply-totals">
             {{ applyStats.tables }} {{ applyStats.tables === 1 ? 'table' : 'tables' }}
@@ -363,7 +365,7 @@ function scrollToLine(line: number) {
         </div>
 
         <div v-else-if="parseStatus === 'error'" class="parse-message error">
-          <button type="button" class="apply-dismiss" title="Dismiss" aria-label="Dismiss" @click="dismissApplyResult">×</button>
+          <button type="button" class="apply-dismiss" title="Dismiss" aria-label="Dismiss" @click="dismissApplyResult"><X :size="12" /></button>
           <div class="apply-title error-title">Could not apply</div>
           <ul class="error-list">
             <li v-for="(line, i) in errorLines" :key="i">{{ line }}</li>
@@ -433,20 +435,18 @@ function scrollToLine(line: number) {
 }
 
 .panel-icon {
-  font-size: 13px;
-  font-family: var(--font-mono);
   color: var(--c-btn-active-bg);
-  letter-spacing: -0.05em;
 }
 
 .collapse-btn {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 12px;
   color: var(--c-panel-label);
   padding: 0 2px;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
 }
 
 .panel-body {
@@ -492,13 +492,6 @@ function scrollToLine(line: number) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 1;
 }
 
 .btn-group .btn {
@@ -680,6 +673,9 @@ html[data-theme='dark'] .apply-title.error-title {
   padding: 0;
   border: none;
   border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   color: var(--c-field-type);
   font-size: 16px;

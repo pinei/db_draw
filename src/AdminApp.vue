@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { X } from 'lucide-vue-next'
 import { useAuthStore } from './stores/auth'
 import { AuthError } from './utils/authApi'
 import { highlightDbml } from './utils/dbmlHighlight'
@@ -361,7 +362,7 @@ onUnmounted(() => {
               <button type="button" class="dbml-btn" :disabled="!dbmlSource" @click="copyDbml">
                 {{ copied ? 'Copied' : 'Copy' }}
               </button>
-              <button type="button" class="dbml-close" aria-label="Close" @click="closeDbml">×</button>
+              <button type="button" class="dbml-close" aria-label="Close" @click="closeDbml"><X :size="16" /></button>
             </div>
           </div>
           <div class="dbml-body">
@@ -385,7 +386,7 @@ onUnmounted(() => {
         >
           <div class="dbml-header">
             <span id="clone-title" class="dbml-heading">Clone into your models</span>
-            <button type="button" class="dbml-close" aria-label="Close" @click="closeClone">×</button>
+            <button type="button" class="dbml-close" aria-label="Close" @click="closeClone"><X :size="16" /></button>
           </div>
           <div class="clone-body">
             <p class="clone-hint">Copies the folder as-is, then applies the identity below. Id must be unique among your models.</p>
@@ -434,7 +435,7 @@ onUnmounted(() => {
         >
           <div class="dbml-header">
             <span id="delete-title" class="dbml-heading">Delete model</span>
-            <button type="button" class="dbml-close" aria-label="Close" @click="closeDelete">×</button>
+            <button type="button" class="dbml-close" aria-label="Close" @click="closeDelete"><X :size="16" /></button>
           </div>
           <div class="clone-body">
             <p class="clone-hint">
@@ -844,9 +845,10 @@ onUnmounted(() => {
   border: none;
   cursor: pointer;
   color: var(--c-panel-label);
-  font-size: 20px;
   line-height: 1;
   padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .dbml-close:hover {

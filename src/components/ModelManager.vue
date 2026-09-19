@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
+import { X } from 'lucide-vue-next'
 import { useDiagramStore } from '../stores/diagram'
 import { listModels } from '../utils/persist'
 import type { ModelSummary } from '../model/types'
+
+const props = defineProps<{
+  mode: 'open' | 'create'
+}>()
 
 const emit = defineEmits<{
   close: []
@@ -11,6 +16,9 @@ const emit = defineEmits<{
 const store = useDiagramStore()
 const current = computed(() => store.currentModelId)
 const panelEl = ref<HTMLElement | null>(null)
+const newIdEl = ref<HTMLInputElement | null>(null)
+
+const title = computed(() => (props.mode === 'create' ? 'New model' : 'Open model'))
 
 const models = ref<ModelSummary[]>([])
 const loading = ref(true)
@@ -61,8 +69,12 @@ async function refresh() {
 }
 
 onMounted(() => {
-  void refresh()
-  void nextTick(() => panelEl.value?.focus())
+  if (props.mode === 'open') void refresh()
+  else loading.value = false
+  void nextTick(() => {
+    if (props.mode === 'create') newIdEl.value?.focus()
+    else panelEl.value?.focus()
+  })
 })
 
 async function open(id: string) {
@@ -114,11 +126,11 @@ async function create() {
         @keydown.escape="$emit('close')"
       >
         <div class="manager-header">
-          <span id="manager-title" class="manager-title">Models</span>
-          <button type="button" class="icon-btn" aria-label="Close" @click="$emit('close')">×</button>
+          <span id="manager-title" class="manager-title">{{ title }}</span>
+          <button type="button" class="icon-btn" aria-label="Close" @click="$emit('close')"><X :size="16" /></button>
         </div>
 
-        <div class="manager-body">
+        <div v-if="mode === 'open'" class="manager-body">
           <div v-if="loading" class="manager-state">Loading…</div>
           <div v-else class="model-cards">
             <button
@@ -143,13 +155,14 @@ async function create() {
             </button>
             <div v-if="!models.length" class="manager-state">No models yet.</div>
           </div>
+        </div>
 
-          <div class="create-section">
-            <div class="create-title">New model</div>
+        <div v-if="mode === 'create'" class="manager-body">
+          <div class="create-section standalone">
             <div class="create-grid">
               <label class="create-field">
                 <span>Model id</span>
-                <input v-model="newId" class="inline-input mono" placeholder="model_id" aria-label="New model id" />
+                <input ref="newIdEl" v-model="newId" class="inline-input mono" placeholder="model_id" aria-label="New model id" />
               </label>
               <label class="create-field">
                 <span>Display name</span>
@@ -236,9 +249,10 @@ async function create() {
   border: none;
   cursor: pointer;
   color: var(--c-panel-label);
-  font-size: 20px;
   line-height: 1;
   padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .icon-btn:hover {
@@ -372,6 +386,12 @@ async function create() {
   padding: 14px 16px 16px;
   border-top: 1px solid var(--c-panel-border);
   background: var(--c-canvas-bg);
+}
+
+.create-section.standalone {
+  border-top: none;
+  background: none;
+  padding: 14px 16px 16px;
 }
 
 .create-title {

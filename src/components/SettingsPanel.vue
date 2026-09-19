@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { Check, Minus, Plus, TriangleAlert } from 'lucide-vue-next'
 import { useDiagramStore } from '../stores/diagram'
 import { useAuthStore } from '../stores/auth'
 import { downloadDiagram, type DiagramExportFormat } from '../utils/diagramExport'
@@ -96,9 +97,9 @@ async function exportDiagram(format: DiagramExportFormat) {
     <div class="panel-section zoom-section">
       <span class="section-label">Zoom {{ Math.round(layout.canvasScale * 100) }}%</span>
       <div class="btn-group">
-        <button class="btn" @click="store.setCanvasScale(layout.canvasScale - 0.1)">−</button>
+        <button class="btn icon" aria-label="Zoom out" @click="store.setCanvasScale(layout.canvasScale - 0.1)"><Minus :size="13" /></button>
         <button class="btn" @click="store.setCanvasScale(1)">Reset</button>
-        <button class="btn" @click="store.setCanvasScale(layout.canvasScale + 0.1)">+</button>
+        <button class="btn icon" aria-label="Zoom in" @click="store.setCanvasScale(layout.canvasScale + 0.1)"><Plus :size="13" /></button>
       </div>
     </div>
 
@@ -131,8 +132,8 @@ async function exportDiagram(format: DiagramExportFormat) {
 
     <div class="save-status" :class="store.saveStatus">
       <span v-if="store.saveStatus === 'saving'">saving…</span>
-      <span v-else-if="store.saveStatus === 'saved'">✓ saved</span>
-      <span v-else-if="store.saveStatus === 'error'">⚠ save failed</span>
+      <span v-else-if="store.saveStatus === 'saved'" class="status-line"><Check :size="12" /> saved</span>
+      <span v-else-if="store.saveStatus === 'error'" class="status-line"><TriangleAlert :size="12" /> save failed</span>
     </div>
   </div>
 </template>
@@ -204,6 +205,12 @@ async function exportDiagram(format: DiagramExportFormat) {
   color: transparent;
   transition: color 0.2s;
 }
+
+.status-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
 .save-status.saving { color: var(--c-panel-label); }
 .save-status.saved  { color: #4ade80; }
 .save-status.error  { color: #f87171; }
@@ -228,6 +235,12 @@ async function exportDiagram(format: DiagramExportFormat) {
 
 .btn:last-child {
   border-right: none;
+}
+
+.btn.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn:hover:not(:disabled) {

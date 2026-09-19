@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
+import { ChevronDown, FolderOpen, Plus, X } from 'lucide-vue-next'
 import { useDiagramStore } from '../stores/diagram'
 import { normalizeTag } from '../utils/modelMeta'
 import ModelManager from './ModelManager.vue'
@@ -7,7 +8,7 @@ import ModelManager from './ModelManager.vue'
 const store = useDiagramStore()
 const meta = computed(() => store.state.meta)
 const displayName = computed(() => meta.value.name || meta.value.id)
-const showManager = ref(false)
+const managerMode = ref<'open' | 'create' | null>(null)
 
 // ─── Edit popover (all 4 metadata fields; id is read-only) ───────────────────
 const open = ref(false)
@@ -78,7 +79,7 @@ function onKeydown(e: KeyboardEvent) {
       >
         <span class="model-id">/{{ meta.id }}</span>
         <span class="model-name">{{ displayName }}</span>
-        <span class="chev">▾</span>
+        <ChevronDown :size="12" class="chev" />
       </div>
 
       <div v-if="open" class="edit-popover" @keydown="onKeydown">
@@ -99,7 +100,7 @@ function onKeydown(e: KeyboardEvent) {
         <div class="tags">
           <span v-for="tag in editTags" :key="tag" class="tag-chip">
             {{ tag }}
-            <button type="button" class="tag-remove" :aria-label="`Remove tag ${tag}`" @click="removeTag(tag)">×</button>
+            <button type="button" class="tag-remove" :aria-label="`Remove tag ${tag}`" @click="removeTag(tag)"><X :size="11" /></button>
           </span>
           <input
             ref="tagInputEl"
@@ -122,14 +123,22 @@ function onKeydown(e: KeyboardEvent) {
     <button
       type="button"
       class="manage-btn"
-      title="Manage models"
-      aria-label="Manage models"
-      @click="showManager = true"
-    >🗂</button>
+      title="New model"
+      aria-label="New model"
+      @click="managerMode = 'create'"
+    ><Plus :size="14" /></button>
 
-    <ModelManager v-if="showManager" @close="showManager = false" />
+    <button
+      type="button"
+      class="manage-btn"
+      title="Open model"
+      aria-label="Open model"
+      @click="managerMode = 'open'"
+    ><FolderOpen :size="14" /></button>
 
-    <div v-if="open" class="backdrop" @click="open = false" />
+    <ModelManager v-if="managerMode" :mode="managerMode" @close="managerMode = null" />
+
+    <div v-if="open || managerMode" class="backdrop" @click="open = false; managerMode = null" />
   </div>
 </template>
 
@@ -216,7 +225,6 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 .chev {
-  font-size: 9px;
   color: var(--c-panel-label);
   flex-shrink: 0;
 }
@@ -295,9 +303,10 @@ function onKeydown(e: KeyboardEvent) {
   border: none;
   cursor: pointer;
   color: var(--c-panel-label);
-  font-size: 12px;
   line-height: 1;
   padding: 0 2px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .tag-remove:hover {

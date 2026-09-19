@@ -128,3 +128,10 @@ body, html, #app {
   stroke: var(--c-connector-hover);
   stroke-width: 1.5;
 }
+
+/* ─── Lucide icons ─────────────────────────────────────────────────────────── */
+/* Inherit text color; never grow inside flex rows; sit on the text baseline. */
+svg.lucide {
+  flex-shrink: 0;
+  vertical-align: -0.125em;
+}

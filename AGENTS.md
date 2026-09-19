@@ -6,7 +6,7 @@ Guia para agentes de IA (e humanos) que trabalham neste repositório.
 
 `db_draw` (npm name: `db-diagram`) é um editor visual de diagramas ER (entidade-relacionamento) no navegador. Ele desenha entidades/relações em um canvas SVG, permite arrastar/redimensionar cards, editar pontos de conexão, trocar notação e exportar/importar o schema em DBML ou Mermaid.
 
-Stack: Vue 3 (`<script setup>`) + Vite + Pinia + TypeScript + SVG (sem libs de grafo). Produção: Express (`server/`) atrás de Caddy + Cloudflare.
+Stack: Vue 3 (`<script setup>`) + Vite + Pinia + TypeScript + SVG (sem libs de grafo) + Lucide (`lucide-vue-next`, import por ícone — nada de emoji/glifo em UI). Produção: Express (`server/`) atrás de Caddy + Cloudflare.
 
 ## Comandos
 
@@ -56,7 +56,7 @@ src/
     SettingsPanel.vue         # controles de estilo/notação/zoom + usuário/logout + status de save
     CodePanel.vue             # painel de código DBML/Mermaid (edição + apply + highlight read-only)
     ModelBar.vue              # pílula /id + nome + botão 🗂 (popover ModelManager)
-    ModelManager.vue          # popover: lista modelos (id+meta), abre (flush antes) e cria (blank)
+    ModelManager.vue          # modal com mode open|create: lista/abre (flush antes) ou cria (blank)
     LoginPanel.vue            # card de login (e-mail + token, gerar token)
 server/
   app.ts                      # Express: /api/auth + /api/models (Vite e produção)
