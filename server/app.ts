@@ -27,6 +27,7 @@ import {
   type UserRecord,
 } from './store'
 import { logoFilePath, resolveSiteUrl, sendTokenEmail, type TokenMailEnv } from './tokenEmail'
+import { migrateToLatest } from './migrations/runner'
 import {
   TICKET_TTL_SEC,
   clearSessionCookie,
@@ -124,6 +125,10 @@ function issueSid(dataDir: string, env: TokenMailEnv, req: Request, res: Respons
 /** Routes mounted at `/api` (token, login, models). Shared by Vite and production. */
 export function createApiRouter(opts: AppOptions): Router {
   const dataDir = opts.dataDir ?? join(opts.rootDir, 'data')
+  // Data migrations run silently here so dev (Vite) and prod share them.
+  // Throws after restoring the pre-run backup → the app refuses to boot
+  // on half-migrated data.
+  migrateToLatest(dataDir)
   const distDir = opts.distDir ?? join(opts.rootDir, 'dist')
   const router = express.Router()
   router.use(express.json({ limit: '8mb' }))

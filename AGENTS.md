@@ -60,6 +60,8 @@ src/
     LoginPanel.vue            # card de login (e-mail + token, gerar token)
 server/
   app.ts                      # Express: /api/auth + /api/models (Vite e produção)
+  migrations/                 # change management de data/: registry + runner (meta.json, backup sempre, restore+abort) — roda no boot via createApiRouter
+  store.ts                    # TODO o acesso fs; MODELS_DIRNAME = 'er-models' (v1 renomeou models/ → er-models/)
   session.ts                  # cookie dbdraw_sid + índice data/sessions + tickets mágicos
   store.ts                    # filesystem de user.json e modelos
   tokenEmail.ts               # e-mail de token via Resend
@@ -69,7 +71,7 @@ vite.config.ts                # monta o router Express em /api no dev server
 data/
   user/<dominio>/<nome>/      # NÃO versionado (ver .gitignore)
     user.json                 # { email, tokenHash, createdAt, lastLoginAt, …, loginCount, lastModelId, codePanelSize? }
-    models/<nome>/            # um .json/.dbml/.mermaid por modelo (hoje só "default")
+    er-models/<nome>/         # um .json/.dbml/.mermaid por modelo (renomeado de models/ na data v1)
   sessions/<hh>/<sidHash>.json  # índice de sessões (cookie HttpOnly)
   tickets/<hh>/<ticketHash>.json
 docs/                         # imagens/assets de documentação
@@ -97,7 +99,7 @@ Regras importantes:
 Login com e-mail + token colável via `LoginPanel.vue` na landing. A sessão vive num cookie HttpOnly `dbdraw_sid` (7 dias, `SameSite=Lax`, `Secure` em HTTPS; o JS nunca lê o sid). O editor (`EditorApp.vue`) é `import()` depois do login — a landing não puxa `persist` / `@dbml/parse` / `html2canvas`. Boot: `GET /api/auth/me` com `credentials: 'include'`; 401 → landing. Logout chama `POST /api/auth/logout` (revoga o sid), desmonta o editor (`resetState()` no `onUnmounted`). Seed de primeiro login usa `resetState()` + `saveModel`. Auto-save não dispara deslogado. Endpoints: `POST /api/auth/token {email}` (gera token longo hashed em `user.json` + ticket mágico single-use 30 min, e-mail via Resend), `POST /api/auth/login {email, token}` (compara hash/`timingSafeEqual`, `Set-Cookie`, devolve `lastModelId` + `codePanelSize` + `admin`), `GET /api/auth/magic?ticket=` (consome ticket, cookie, 302 `/`), `GET /api/auth/me` (inclui `admin` a partir de `ADMIN_EMAILS` no servidor — a allowlist não vai no bundle), `POST /api/auth/logout`, `GET/PUT /api/auth/prefs`. Settings mostra o link Admin (`/admin` noutra aba) só se `admin`. `App.vue` trata `/admin`: lazy `AdminApp` se `admin`, senão `replaceState` para `/`. `GET /api/admin/users`, `GET /api/admin/user?email=`, `GET /api/admin/dbml?email=&model=`, `POST /api/admin/clone` e `POST /api/admin/delete` exigem sessão admin (404 se não); o JSON do user vem sem `token`/`tokenHash`/`magicTicketHash`. Clique num modelo no admin abre popup DBML; Clone copia a pasta para os models do admin (id novo, sem conflito). Delete remove a pasta do modelo (e limpa `lastModelId` se apontava para ela). Mutações `/api` exigem Origin na allowlist (`SITE_URL` + Host) e rejeitam `Sec-Fetch-Site: cross-site`. E-mail vira pasta `data/user/<dominio>/<nome>`. `GET/PUT /api/models` usam o cookie (não headers). 401 vira `AuthError` e desloga. Sid hashed em `data/sessions/<hh>/<hash>.json`; tickets em `data/tickets/`. Token plaintext legado em `user.json` ainda autentica até o próximo Generate. `lastModelId` / `codePanelSize` como antes.
 
 ### Persistência (dev apenas)
-A persistência é o router Express em `server/app.ts` (`GET/PUT /api/models/:name`, autenticado) e grava em `data/user/.../models/:name/` (`.json`, `.dbml`, `.mermaid`). Em dev o Vite monta o mesmo router; em produção `npm start` serve `dist/` + API. Sem o servidor (`vite preview` ou arquivo estático) o app roda em memória silenciosamente (`EditorApp.vue` usa try/catch). Primeiro login sem modelo → 404 → `EditorApp.vue` semeia do `sampleData` em memória.
+A persistência é o router Express em `server/app.ts` (`GET/PUT /api/models/:name`, autenticado) e grava em `data/user/.../er-models/:name/` (`.json`, `.dbml`, `.mermaid`). Em dev o Vite monta o mesmo router; em produção `npm start` serve `dist/` + API. Sem o servidor (`vite preview` ou arquivo estático) o app roda em memória silenciosamente (`EditorApp.vue` usa try/catch). Primeiro login sem modelo → 404 → `EditorApp.vue` semeia do `sampleData` em memória.
 
 `PUT /api/models/:name` aceita um envelope parcial `{ meta?, schema?, presentation?, exports? }` (`mergeModelPatch` em `store.ts`): o `.json` é mesclado fatia a fatia; `.dbml`/`.mermaid` só são reescritos quando `exports.dbml` / `exports.mermaid` vêm como string (o cliente continua autoritativo — o servidor **não** regenera). Snapshot legado com `_dbml`/`_mermaid` no topo ainda funciona. No cliente, `saveModelSlices` monta o envelope; `saveModel` = full (create/seed). Dirty flags na store (`meta` / `schema` / `presentation` / `exports`) + debounce 1.5s: drag/zoom/mid-route só sujam `presentation` (sem tocar nos exports); mudanças de schema (Apply etc.) sujam `schema`+`exports`. Preferências de UI (`codeFormat`, `codePanelOpen`, `theme`) não sujam nada. `loadState`/`resetState` usam `suppressDirty`.
 

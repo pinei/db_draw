@@ -130,7 +130,7 @@ export function readUserRecord(userHome: string): UserRecord | null {
 }
 
 export function writeUserRecord(userHome: string, record: UserRecord): void {
-  mkdirSync(join(userHome, 'models'), { recursive: true })
+  mkdirSync(join(userHome, MODELS_DIRNAME), { recursive: true })
   writeFileSync(join(userHome, 'user.json'), JSON.stringify(record, null, 2), 'utf-8')
 }
 
@@ -207,7 +207,7 @@ function schemaCounts(data: unknown): { tables: number; relationships: number } 
 }
 
 export function listModelsDetailed(userHome: string): AdminModelEntry[] {
-  const modelsDir = join(userHome, 'models')
+  const modelsDir = join(userHome, MODELS_DIRNAME)
   const models: AdminModelEntry[] = []
   if (!existsSync(modelsDir)) return models
   for (const entry of readdirSync(modelsDir, { withFileTypes: true })) {
@@ -239,7 +239,7 @@ export function listModelsDetailed(userHome: string): AdminModelEntry[] {
 }
 
 export function listModels(userHome: string): Array<{ id: string; meta: unknown }> {
-  const modelsDir = join(userHome, 'models')
+  const modelsDir = join(userHome, MODELS_DIRNAME)
   const models: Array<{ id: string; meta: unknown }> = []
   if (!existsSync(modelsDir)) return models
   for (const entry of readdirSync(modelsDir, { withFileTypes: true })) {
@@ -266,19 +266,22 @@ export function listModels(userHome: string): Array<{ id: string; meta: unknown 
 }
 
 export function loadModelJson(userHome: string, name: string): string | null {
-  const jsonPath = join(userHome, 'models', name, `${name}.json`)
+  const jsonPath = join(userHome, MODELS_DIRNAME, name, `${name}.json`)
   if (!existsSync(jsonPath)) return null
   return readFileSync(jsonPath, 'utf-8')
 }
 
 export function loadModelDbml(userHome: string, name: string): string | null {
   if (!/^[a-z0-9_-]+$/i.test(name)) return null
-  const dbmlPath = join(userHome, 'models', name, `${name}.dbml`)
+  const dbmlPath = join(userHome, MODELS_DIRNAME, name, `${name}.dbml`)
   if (!existsSync(dbmlPath)) return null
   return readFileSync(dbmlPath, 'utf-8')
 }
 
 export const MODEL_ID_RE = /^[a-z0-9_-]+$/i
+
+/** On-disk folder holding a user's models (renamed from `models/` in data v1). */
+export const MODELS_DIRNAME = 'er-models'
 
 function sanitizeCloneTags(tags: unknown): string[] {
   if (!Array.isArray(tags)) return []
@@ -291,7 +294,7 @@ function sanitizeCloneTags(tags: unknown): string[] {
   return out
 }
 
-/** Raw folder copy into destHome/models/destId, then rename id-prefixed files and patch meta. */
+/** Raw folder copy into destHome/er-models/destId, then rename id-prefixed files and patch meta. */
 export function cloneModelFolder(
   dataDir: string,
   srcHome: string,
@@ -303,14 +306,14 @@ export function cloneModelFolder(
   if (!MODEL_ID_RE.test(srcId) || !MODEL_ID_RE.test(destId)) {
     return { ok: false, status: 400, error: 'invalid model id' }
   }
-  const srcDir = join(srcHome, 'models', srcId)
-  const destDir = join(destHome, 'models', destId)
+  const srcDir = join(srcHome, MODELS_DIRNAME, srcId)
+  const destDir = join(destHome, MODELS_DIRNAME, destId)
   if (!isInsideDataDir(dataDir, srcDir) || !isInsideDataDir(dataDir, destDir)) {
     return { ok: false, status: 400, error: 'invalid path' }
   }
   if (!existsSync(srcDir)) return { ok: false, status: 404, error: 'source model not found' }
   if (existsSync(destDir)) return { ok: false, status: 409, error: `Model "${destId}" already exists` }
-  mkdirSync(join(destHome, 'models'), { recursive: true })
+  mkdirSync(join(destHome, MODELS_DIRNAME), { recursive: true })
   try {
     cpSync(srcDir, destDir, { recursive: true })
     for (const name of readdirSync(destDir)) {
@@ -339,7 +342,7 @@ export function cloneModelFolder(
   }
 }
 
-/** Remove models/<id>/ (folder + files). Clears lastModelId when it pointed at this model. */
+/** Remove er-models/<id>/ (folder + files). Clears lastModelId when it pointed at this model. */
 export function deleteModelFolder(
   dataDir: string,
   userHome: string,
@@ -348,7 +351,7 @@ export function deleteModelFolder(
   if (!MODEL_ID_RE.test(modelId)) {
     return { ok: false, status: 400, error: 'invalid model id' }
   }
-  const dir = join(userHome, 'models', modelId)
+  const dir = join(userHome, MODELS_DIRNAME, modelId)
   if (!isInsideDataDir(dataDir, dir)) {
     return { ok: false, status: 400, error: 'invalid path' }
   }
@@ -373,7 +376,7 @@ export function saveModelFiles(
   dbml: string,
   mermaid: string,
 ): void {
-  const dir = join(userHome, 'models', name)
+  const dir = join(userHome, MODELS_DIRNAME, name)
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, `${name}.json`), JSON.stringify(state, null, 2), 'utf-8')
   writeFileSync(join(dir, `${name}.dbml`), dbml, 'utf-8')
@@ -405,7 +408,7 @@ export interface ModelSavePatch {
 }
 
 /**
- * Merge a partial model PUT into models/<name>/.
+ * Merge a partial model PUT into er-models/<name>/.
  * - JSON is merged field-wise (missing slices keep prior values).
  * - .dbml / .mermaid are rewritten only when exports.dbml / exports.mermaid are strings.
  * - Creating a new model requires at least schema (or a full prior file).
@@ -418,9 +421,9 @@ export function mergeModelPatch(
   if (!MODEL_ID_RE.test(name)) {
     return { ok: false, status: 400, error: 'invalid model id' }
   }
-  const jsonPath = join(userHome, 'models', name, `${name}.json`)
-  const dbmlPath = join(userHome, 'models', name, `${name}.dbml`)
-  const mermaidPath = join(userHome, 'models', name, `${name}.mermaid`)
+  const jsonPath = join(userHome, MODELS_DIRNAME, name, `${name}.json`)
+  const dbmlPath = join(userHome, MODELS_DIRNAME, name, `${name}.dbml`)
+  const mermaidPath = join(userHome, MODELS_DIRNAME, name, `${name}.mermaid`)
 
   let current: Record<string, unknown> = {}
   const existed = existsSync(jsonPath)
@@ -474,7 +477,7 @@ export function mergeModelPatch(
   }
 
   try {
-    const dir = join(userHome, 'models', name)
+    const dir = join(userHome, MODELS_DIRNAME, name)
     mkdirSync(dir, { recursive: true })
     writeFileSync(jsonPath, JSON.stringify(next, null, 2), 'utf-8')
 
