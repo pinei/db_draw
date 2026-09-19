@@ -181,7 +181,16 @@ export function listUsers(dataDir: string): AdminUserSummary[] {
       })
     }
   }
-  out.sort((a, b) => a.email.localeCompare(b.email))
+  // Most recently logged in first (ISO datetimes sort lexicographically);
+  // never-logged-in (null) last, email as deterministic tiebreak
+  out.sort((a, b) => {
+    if (a.lastLoginAt !== b.lastLoginAt) {
+      if (a.lastLoginAt === null) return 1
+      if (b.lastLoginAt === null) return -1
+      return a.lastLoginAt < b.lastLoginAt ? 1 : -1
+    }
+    return a.email.localeCompare(b.email)
+  })
   return out
 }
 
