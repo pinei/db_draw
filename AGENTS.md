@@ -54,7 +54,9 @@ src/
     DemoConnector.vue         # conector só-leitura da landing (sem store / drag)
     ConnectorMarker.vue       # <defs> com todos os markers SVG por notação/cardinalidade
     SettingsPanel.vue         # controles de estilo/notação/zoom + usuário/logout + status de save
-    CodePanel.vue             # painel de código DBML/Mermaid (edição + apply + highlight read-only)
+    SidePanel.vue             # dock lateral esquerdo (overlay): rail de ícones + resize horizontal + header; views plugáveis
+    CodeView.vue              # view de código DBML/Mermaid (edição + apply + highlight read-only)
+    ScopeView.vue             # CRUD de scopes + checklist de tabelas; modo scope no canvas via activeScopeId (sessão) com badge de saída na ModelBar
     ModelBar.vue              # pílula /id + nome + botão 🗂 (popover ModelManager)
     ModelManager.vue          # modal com mode open|create: lista/abre (flush antes) ou cria (blank)
     LoginPanel.vue            # card de login (e-mail + token, gerar token)
@@ -82,7 +84,8 @@ docs/                         # imagens/assets de documentação
 O modelo está dividido em **lógico** (schema) e **apresentação** (layout), ambos definidos em `src/model/types.ts`.
 
 - `ErSchema` = `{ entities: ErEntity[]; relationships: ErRelationship[] }` — independe de layout.
-- `DiagramState` = `meta` + schema + `entityPositions` + `layout` + `connectorPoints` + `labelPositions` + `routeOverrides`.
+- `DiagramState` = `meta` + schema + `scopes` + `entityPositions` + `layout` + `connectorPoints` + `labelPositions` + `routeOverrides`.
+- `ErScope` = `{ id (slug imutável), name, entityIds[], positions{}, connectorPoints{}, labelPositions{}, routeOverrides{} }` — um arquivo próprio por scope (`<model>.scope.<id>.json`, flat para o clone renomear via prefixo); rels derivadas (ambos os extremos no checklist); overrides independentes com snapshot dos globais na criação (opção B); fora do `.json` do model.
 - `ModelMeta` = `{ id (pasta, imutável), name, description, tags[] }` — vai no `.json` do model; `id` sempre vence no load, tags sanitizadas (`modelMeta.ts`), artefatos antigos ganham backfill via `loadState(loaded, modelId)`.
 - `Cardinality`: `ONE | ONE_OR_MANY | ZERO_OR_ONE | ZERO_OR_MANY` (só combinações min/max reais; `ErRelationship` usa só essas).
 - `LogicalCardinality`: `'ONE' | 'MANY'` — placeholders não-especializados p/ modelagem lógica futura; os renderers aceitam `Cardinality | LogicalCardinality`, então os glifos do `MANY` existem em todas as notações mesmo sem uso atual.

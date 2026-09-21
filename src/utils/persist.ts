@@ -1,4 +1,4 @@
-import type { DiagramState, PersistedDiagramState, ModelMeta, ModelSummary } from '../model/types'
+import type { DiagramState, ErScope, PersistedDiagramState, ModelMeta, ModelSummary } from '../model/types'
 import { generateDbml, generateMermaid } from './codePlaceholder'
 import { compileDbml } from './dbmlImport'
 import { sanitizeTags } from './modelMeta'
@@ -54,6 +54,52 @@ export async function listModels(): Promise<ModelSummary[]> {
   return out
 }
 
+function isValidScope(data: unknown): data is ErScope {
+  if (typeof data !== 'object' || data === null) return false
+  const s = data as Record<string, unknown>
+  return typeof s.id === 'string' && /^[a-z0-9_-]+$/i.test(s.id)
+    && typeof s.name === 'string'
+    && Array.isArray(s.entityIds)
+    && typeof s.positions === 'object' && s.positions !== null
+}
+
+/** Scopes live in their own files: er-models/<model>/<model>.scope.<id>.json */
+export async function listScopes(modelId: string): Promise<ErScope[]> {
+  let res: Response
+  try {
+    res = await fetch(`${BASE}/${modelId}/scopes`, CREDS)
+  } catch {
+    throw new Error('Server unavailable — run npm run dev')
+  }
+  if (res.status === 401) throw new AuthError()
+  if (!res.ok) throw new Error(`Failed to list scopes: ${res.status}`)
+  const data = await res.json().catch(() => ({})) as { scopes?: unknown }
+  if (!Array.isArray(data.scopes)) return []
+  return data.scopes.filter(isValidScope)
+}
+
+export async function saveScope(modelId: string, scope: ErScope): Promise<void> {
+  const res = await fetch(`${BASE}/${modelId}/scopes/${scope.id}`, {
+    ...CREDS,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(scope),
+  })
+  if (res.status === 401) throw new AuthError()
+  if (!res.ok && res.status !== 204) {
+    const data = await res.json().catch(() => ({})) as { error?: unknown }
+    throw new Error(typeof data.error === 'string' ? data.error : `Failed to save scope "${scope.id}": ${res.status}`)
+  }
+}
+
+export async function deleteScope(modelId: string, scopeId: string): Promise<void> {
+  const res = await fetch(`${BASE}/${modelId}/scopes/${scopeId}`, { ...CREDS, method: 'DELETE' })
+  if (res.status === 401) throw new AuthError()
+  if (!res.ok && res.status !== 204) {
+    throw new Error(`Failed to delete scope "${scopeId}": ${res.status}`)
+  }
+}
+
 export async function loadModel(name: string): Promise<PersistedDiagramState | null> {
   const res = await fetch(`${BASE}/${name}`, CREDS)
   if (res.status === 401) throw new AuthError()
@@ -84,7 +130,7 @@ export function buildModelSavePayload(state: DiagramState, slices: ModelSaveSlic
   if (slices.meta) payload.meta = state.meta
   if (slices.schema) payload.schema = state.schema
   if (slices.presentation) {
-    const { codeFormat: _cf, codePanelOpen: _cpo, theme: _th, ...persistedLayout } = state.layout
+    const { codeFormat: _cf, codePanelOpen: _cpo, sidePanelView: _spv, theme: _th, ...persistedLayout } = state.layout
     payload.presentation = {
       entityPositions: state.entityPositions,
       connectorPoints: state.connectorPoints,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import { ChevronDown, FolderOpen, Plus, X } from 'lucide-vue-next'
+import { ChevronDown, FolderOpen, Plus, Scan, X } from 'lucide-vue-next'
 import { useDiagramStore } from '../stores/diagram'
 import { normalizeTag } from '../utils/modelMeta'
 import ModelManager from './ModelManager.vue'
@@ -9,6 +9,10 @@ const store = useDiagramStore()
 const meta = computed(() => store.state.meta)
 const displayName = computed(() => meta.value.name || meta.value.id)
 const managerMode = ref<'open' | 'create' | null>(null)
+// Strip starts after the dock (open content width) or the icon rail (48px)
+const stripLeft = computed(() =>
+  store.layout.codePanelOpen ? store.sidePanelWidth + 16 : 48 + 16,
+)
 
 // ─── Edit popover (all 4 metadata fields; id is read-only) ───────────────────
 const open = ref(false)
@@ -67,7 +71,7 @@ function onKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="model-bar">
+  <div class="model-bar" :style="{ left: `${stripLeft}px` }">
     <div class="pill-anchor">
       <div
         class="model-pill"
@@ -81,6 +85,18 @@ function onKeydown(e: KeyboardEvent) {
         <span class="model-name">{{ displayName }}</span>
         <ChevronDown :size="12" class="chev" />
       </div>
+
+      <button
+        v-if="store.activeScope"
+        type="button"
+        class="scope-badge"
+        :title="`Viewing scope ${store.activeScope.name} — click to exit`"
+        @click="store.setActiveScope(null)"
+      >
+        <Scan :size="12" />
+        <span class="scope-badge-name">{{ store.activeScope.name }}</span>
+        <X :size="12" />
+      </button>
 
       <div v-if="open" class="edit-popover" @keydown="onKeydown">
       <label class="edit-field">
@@ -143,12 +159,11 @@ function onKeydown(e: KeyboardEvent) {
 </template>
 
 <style scoped>
-/* Full free-zone strip (CodePanel ↔ SettingsPanel), centered content.
+/* Full free-zone strip (SidePanel ↔ SettingsPanel), centered content.
    Click-through except on the pill/popover so canvas stays usable underneath. */
 .model-bar {
   position: absolute;
   top: 16px;
-  left: 312px;
   right: 248px;
   z-index: 100;
   display: flex;
@@ -163,6 +178,32 @@ function onKeydown(e: KeyboardEvent) {
   position: relative;
   pointer-events: auto;
   max-width: 100%;
+}
+
+.scope-badge {
+  pointer-events: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 200px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--c-btn-active-fg);
+  background: var(--c-btn-active-bg);
+  border: 1px solid var(--c-btn-active-border);
+  border-radius: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 5px 8px 5px 10px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.scope-badge-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .manage-btn {

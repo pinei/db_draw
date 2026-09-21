@@ -65,6 +65,9 @@ export type NotationStyle = 'crowsfoot' | 'minmax' | 'barker'
 export type CodeFormat = 'dbml' | 'mermaid'
 export type ThemeMode = 'light' | 'dark' | 'system'
 
+/** Active view of the left docked side panel (empty ScopeView is a placeholder). */
+export type SidePanelView = 'code' | 'scope'
+
 export interface DiagramLayout {
   connectorStyle: ConnectorStyle
   notationStyle: NotationStyle
@@ -72,6 +75,7 @@ export interface DiagramLayout {
   canvasScale: number
   codeFormat: CodeFormat
   codePanelOpen: boolean
+  sidePanelView: SidePanelView
   theme: ThemeMode
 }
 
@@ -120,6 +124,21 @@ export interface RouteOverride {
   selfLoop?: SelfLoopRouteOverride
 }
 
+// ─── Scopes (named ER sub-views, one file per scope) ─────────────────────────
+// Persisted as er-models/<model>/<model>.scope.<scopeId>.json — never inside
+// the model .json. Connector overrides are independent per scope (snapshot of
+// the globals at creation); entityIds/positions follow the checklist.
+
+export interface ErScope {
+  id: string
+  name: string
+  entityIds: string[]
+  positions: Record<string, EntityRect>
+  connectorPoints: Record<string, CustomConnectionPoints>
+  labelPositions: Record<string, LabelPosition>
+  routeOverrides: Record<string, RouteOverride>
+}
+
 // ─── Diagram State (presentation model) ─────────────────────────────────────
 
 export interface EntityRect {
@@ -132,6 +151,7 @@ export interface EntityRect {
 export interface DiagramState {
   meta: ModelMeta
   schema: ErSchema
+  scopes: Record<string, ErScope>
   entityPositions: Record<string, EntityRect>
   layout: DiagramLayout
   connectorPoints: Record<string, CustomConnectionPoints>
@@ -143,7 +163,7 @@ export interface DiagramState {
 
 // Keys of DiagramLayout that are UI preferences, not diagram properties —
 // they live in memory only and are stripped before writing data/:name/*.json.
-export type UiPreferenceKey = 'codeFormat' | 'codePanelOpen' | 'theme'
+export type UiPreferenceKey = 'codeFormat' | 'codePanelOpen' | 'sidePanelView' | 'theme'
 
 export type PersistedDiagramLayout = Omit<DiagramLayout, UiPreferenceKey>
 

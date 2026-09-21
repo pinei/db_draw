@@ -11,6 +11,7 @@ import {
   isInsideDataDir,
   listModels,
   listModelsDetailed,
+  listScopes,
   listUsers,
   loadModelDbml,
   loadModelJson,
@@ -22,6 +23,8 @@ import {
   isModelSavePatch,
   touchLastModel,
   userDir,
+  writeScopeFile,
+  deleteScopeFile,
   writeUserRecord,
   sanitizeCodePanelSize,
   type UserRecord,
@@ -336,6 +339,8 @@ export function createApiRouter(opts: AppOptions): Router {
       const mermaid = typeof body._mermaid === 'string' ? body._mermaid : ''
       delete body._dbml
       delete body._mermaid
+      // Scopes live in their own files — never inside the model .json
+      delete body.scopes
       if (body.layout && typeof body.layout === 'object') {
         const layout = body.layout as Record<string, unknown>
         delete layout.codeFormat
@@ -348,6 +353,39 @@ export function createApiRouter(opts: AppOptions): Router {
     } catch {
       res.status(400).end()
     }
+  })
+
+  router.get('/models/:name/scopes', (req, res) => {
+    const name = req.params.name
+    if (!/^[a-z0-9_-]+$/i.test(name)) { res.status(404).end(); return }
+    const home = res.locals.userHome as string
+    res.status(200).json({ scopes: listScopes(dataDir, home, name) })
+  })
+
+  router.put('/models/:name/scopes/:scopeId', (req, res) => {
+    const name = req.params.name
+    const scopeId = req.params.scopeId
+    const home = res.locals.userHome as string
+    const result = writeScopeFile(dataDir, home, name, scopeId, req.body)
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error })
+      return
+    }
+    touchLastModel(home, name)
+    res.status(204).end()
+  })
+
+  router.delete('/models/:name/scopes/:scopeId', (req, res) => {
+    const name = req.params.name
+    const scopeId = req.params.scopeId
+    const home = res.locals.userHome as string
+    const result = deleteScopeFile(dataDir, home, name, scopeId)
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error })
+      return
+    }
+    touchLastModel(home, name)
+    res.status(204).end()
   })
 
   router.get('/admin/users', requireAdmin, (_req, res) => {

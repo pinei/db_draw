@@ -71,8 +71,19 @@ function onPanEnd() {
 
 function onWheel(evt: WheelEvent) {
   evt.preventDefault()
+  if (!svgEl.value) return
+  // Zoom to cursor: keep the model point under the pointer fixed by
+  // re-anchoring the offset after the scale change.
+  const box = svgEl.value.getBoundingClientRect()
+  const sx = evt.clientX - box.left
+  const sy = evt.clientY - box.top
+  const before = screenToModel(evt.clientX, evt.clientY)
   const delta = evt.deltaY > 0 ? -0.08 : 0.08
-  store.setCanvasScale(layout.value.canvasScale + delta)
+  // Same clamp as setCanvasScale (0.2x–3x); skip offset write when pegged
+  const after = Math.min(3, Math.max(0.2, layout.value.canvasScale + delta))
+  if (after === layout.value.canvasScale) return
+  store.setCanvasScale(after)
+  store.setCanvasOffset(sx - before.x * after, sy - before.y * after)
 }
 
 // ─── SVG transform for pan + zoom ───────────────────────────────────────────
@@ -224,8 +235,8 @@ function onLabelDragMove(evt: MouseEvent) {
   const fromRect = store.positionOf(rel.fromEntityId)
   const toRect = store.positionOf(rel.toEntityId)
   if (rel.fromEntityId === rel.toEntityId) {
-    const corner = store.state.routeOverrides[rel.id]?.selfLoop?.corner ?? 'ne'
-    const extent = store.state.routeOverrides[rel.id]?.selfLoop?.extent ?? 56
+    const corner = store.routeOverrideOf(rel.id)?.selfLoop?.corner ?? 'ne'
+    const extent = store.routeOverrideOf(rel.id)?.selfLoop?.extent ?? 56
     const { source, target } = selfLoopPoints(fromRect, corner)
     const corners = selfLoopCorners(source, target, extent, corner)
     store.setLabelPosition(drag.relationshipId, {
@@ -239,7 +250,7 @@ function onLabelDragMove(evt: MouseEvent) {
   const { source, target } = getConnectionPoints(
     fromRect,
     toRect,
-    store.state.connectorPoints[drag.relationshipId],
+    store.connectorPointsOf(drag.relationshipId),
   )
   store.setLabelPosition(drag.relationshipId, snapToConnector(pos, source.point, target.point))
 }
@@ -262,7 +273,7 @@ function onRouteDragMove(evt: MouseEvent) {
 
   if (rel.fromEntityId === rel.toEntityId) {
     const rect = store.positionOf(rel.fromEntityId)
-    const previousCorner = store.state.routeOverrides[rel.id]?.selfLoop?.corner ?? 'ne'
+    const previousCorner = store.routeOverrideOf(rel.id)?.selfLoop?.corner ?? 'ne'
     const corner = selfLoopCornerFromPoint(rect, pos)
     const { source, target } = selfLoopPoints(rect, corner)
     if (corner !== previousCorner) {
@@ -277,7 +288,7 @@ function onRouteDragMove(evt: MouseEvent) {
     return
   }
 
-  const customPoints = store.state.connectorPoints[drag.relationshipId]
+  const customPoints = store.connectorPointsOf(drag.relationshipId)
   const { source, target } = getConnectionPoints(
     store.positionOf(rel.fromEntityId),
     store.positionOf(rel.toEntityId),
@@ -340,7 +351,7 @@ onUnmounted(() => {
     <g :transform="canvasTransform">
       <!-- Connectors rendered first so entity cards appear on top -->
       <ErConnector
-        v-for="rel in store.relationships"
+        v-for="rel in store.visibleRelationships"
         :key="rel.id"
         :relationship="rel"
         :from-rect="store.positionOf(rel.fromEntityId)"
@@ -350,7 +361,7 @@ onUnmounted(() => {
       />
 
       <ErEntity
-        v-for="entity in store.entities"
+        v-for="entity in store.visibleEntities"
         :key="entity.id"
         :entity="entity"
         :rect="store.positionOf(entity.id)"

@@ -1,115 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ChevronDown, ChevronRight, CircleQuestionMark, Code, X } from 'lucide-vue-next'
+import { computed, nextTick, ref, watch } from 'vue'
+import { CircleQuestionMark, X } from 'lucide-vue-next'
 import { useDiagramStore } from '../stores/diagram'
-import { useAuthStore } from '../stores/auth'
 import { generateDbml, generateMermaid } from '../utils/codePlaceholder'
 import { highlightDbml, highlightMermaid } from '../utils/dbmlHighlight'
 import type { CodeFormat } from '../model/types'
 import type { DbmlApplyStats, DbmlIssueLine } from '../utils/dbmlImport'
 
 const store = useDiagramStore()
-const auth = useAuthStore()
 const layout = computed(() => store.layout)
-const panelEl = ref<HTMLDivElement | null>(null)
 const textareaEl = ref<HTMLTextAreaElement | null>(null)
-
-// CSS resize writes inline width/height; collapse must clear them so the
-// header can shrink, but remember the last size and put it back on expand.
-const savedSize = ref<{ width: string; height: string } | null>(null)
-
-function applySizePx(width: number, height: number) {
-  const el = panelEl.value
-  if (!el) return
-  const w = `${Math.round(width)}px`
-  const h = `${Math.round(height)}px`
-  el.style.width = w
-  el.style.height = h
-  savedSize.value = { width: w, height: h }
-}
-
-function readSizePx(): { width: number; height: number } | null {
-  const el = panelEl.value
-  if (!el) return null
-  const width = el.offsetWidth
-  const height = el.offsetHeight
-  if (!width || !height) return null
-  return { width, height }
-}
-
-function persistCurrentSize() {
-  const size = readSizePx()
-  if (!size) return
-  const prev = auth.codePanelSize
-  if (prev && prev.width === size.width && prev.height === size.height) return
-  void auth.persistCodePanelSize(size)
-}
-
-watch(() => layout.value.codePanelOpen, (open) => {
-  const el = panelEl.value
-  if (!el) return
-  if (!open) {
-    const width = el.style.width || `${el.offsetWidth}px`
-    const height = el.style.height || `${el.offsetHeight}px`
-    savedSize.value = { width, height }
-    persistCurrentSize()
-    el.style.height = ''
-    el.style.width = ''
-    return
-  }
-  const saved = savedSize.value
-  if (!saved) return
-  nextTick(() => {
-    if (!panelEl.value) return
-    panelEl.value.style.width = saved.width
-    panelEl.value.style.height = saved.height
-  })
-})
-
-watch(
-  () => auth.codePanelSize,
-  (size) => {
-    if (!size || !layout.value.codePanelOpen) return
-    applySizePx(size.width, size.height)
-  },
-)
-
-let resizeObserver: ResizeObserver | null = null
-let persistTimer: ReturnType<typeof setTimeout> | null = null
-let observing = false
-
-function schedulePersist() {
-  if (!observing || !layout.value.codePanelOpen) return
-  if (persistTimer) clearTimeout(persistTimer)
-  persistTimer = setTimeout(() => {
-    persistTimer = null
-    persistCurrentSize()
-  }, 400)
-}
-
-onMounted(() => {
-  const el = panelEl.value
-  if (!el) return
-  const size = auth.codePanelSize
-  if (size && layout.value.codePanelOpen) {
-    applySizePx(size.width, size.height)
-  }
-  resizeObserver = new ResizeObserver(() => schedulePersist())
-  // Ignore the first layout pass (default / restored size) so we don't PUT
-  // before the user actually resizes
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      observing = true
-      resizeObserver?.observe(el)
-    })
-  })
-})
-
-onUnmounted(() => {
-  resizeObserver?.disconnect()
-  resizeObserver = null
-  if (persistTimer) clearTimeout(persistTimer)
-})
 
 const formatOptions: { value: CodeFormat; label: string }[] = [
   { value: 'dbml',    label: 'DBML' },
@@ -268,20 +168,7 @@ function scrollToLine(line: number) {
 </script>
 
 <template>
-  <div ref="panelEl" class="code-panel" :class="{ expanded: layout.codePanelOpen, collapsed: !layout.codePanelOpen }">
-    <div class="panel-header" @click="store.toggleCodePanel()">
-      <span class="panel-title">
-        <Code :size="14" class="panel-icon" />
-        Diagram Code
-      </span>
-      <button class="collapse-btn" :title="layout.codePanelOpen ? 'Collapse' : 'Expand'">
-        <ChevronDown v-if="layout.codePanelOpen" :size="14" />
-        <ChevronRight v-else :size="14" />
-      </button>
-    </div>
-
-    <Transition name="panel-slide">
-      <div v-if="layout.codePanelOpen" class="panel-body">
+  <div class="code-view">
         <div class="format-row">
           <div class="btn-group">
             <button
@@ -371,90 +258,17 @@ function scrollToLine(line: number) {
             <li v-for="(line, i) in errorLines" :key="i">{{ line }}</li>
           </ul>
         </div>
-      </div>
-    </Transition>
   </div>
 </template>
 
 <style scoped>
-.code-panel {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  background: var(--c-panel-bg);
-  border: 1px solid var(--c-panel-border);
-  border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-  z-index: 100;
-  width: 280px;
-  min-width: 220px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  resize: both;
-  box-sizing: border-box;
-}
-
-/* Explicit height (not min-height) so read-only <pre> and edit <textarea>
-   share the same box from the first paint — content no longer drives size.
-   16px top + 16px bottom = usable viewport; matches the panel's top inset. */
-.code-panel.expanded {
-  height: calc(100vh - 32px);
-  max-height: calc(100vh - 32px);
-}
-
-.code-panel.collapsed {
-  resize: none;
-  height: auto;
-  max-height: none;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  cursor: pointer;
-  user-select: none;
-  min-height: 36px;
-}
-
-.panel-header:hover {
-  background: var(--c-btn-hover-bg);
-}
-
-.panel-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--c-panel-label);
-}
-
-.panel-icon {
-  color: var(--c-btn-active-bg);
-}
-
-.collapse-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--c-panel-label);
-  padding: 0 2px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-}
-
-.panel-body {
+/* Content root: fills the shell's content area (the shell owns position,
+   size, collapse and resize). */
+.code-view {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 0 12px 12px;
-  border-top: 1px solid var(--c-panel-border);
+  padding: 12px;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -464,12 +278,16 @@ function scrollToLine(line: number) {
   padding-top: 10px;
 }
 
+/* Buttons keep a standard max width and stay centered as the dock widens. */
 .btn-group {
   display: flex;
   overflow: hidden;
   border: 1px solid var(--c-btn-border);
   border-radius: 6px;
   background: var(--c-btn-bg);
+  width: 100%;
+  max-width: 240px;
+  margin-inline: auto;
 }
 
 .docs-link {
@@ -591,6 +409,8 @@ function scrollToLine(line: number) {
 
 .apply-btn {
   width: 100%;
+  max-width: 240px;
+  margin-inline: auto;
   padding: 6px;
   font-size: 11px;
   font-family: inherit;
@@ -766,21 +586,6 @@ html[data-theme='dark'] .apply-title {
 html[data-theme='dark'] .apply-col li.added { color: #4ade80; }
 html[data-theme='dark'] .apply-col li.removed { color: #f87171; }
 html[data-theme='dark'] .apply-col li.updated { color: #fbbf24; }
-
-/* ── Collapse transition ─────────────────────────────────────── */
-
-.panel-slide-enter-active,
-.panel-slide-leave-active {
-  transition: max-height 0.2s ease, opacity 0.15s ease;
-  max-height: 100vh;
-  overflow: hidden;
-}
-
-.panel-slide-enter-from,
-.panel-slide-leave-to {
-  max-height: 0;
-  opacity: 0;
-}
 </style>
 
 <style>

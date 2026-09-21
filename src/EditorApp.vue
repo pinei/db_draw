@@ -6,7 +6,7 @@ import { loadModel, saveModel, AuthError } from './utils/persist'
 import DiagramCanvas from './components/DiagramCanvas.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import SupportKofi from './components/SupportKofi.vue'
-import CodePanel from './components/CodePanel.vue'
+import SidePanel from './components/SidePanel.vue'
 import ModelBar from './components/ModelBar.vue'
 
 const store = useDiagramStore()
@@ -40,6 +40,11 @@ async function initModel() {
     const loaded = await loadModel(id)
     if (loaded) {
       store.loadState(loaded, id)
+      try {
+        await store.refreshScopes()
+      } catch (e) {
+        if (e instanceof AuthError) auth.logout()
+      }
     } else if (id === 'default') {
       store.resetState()
       await saveModel(id, store.state)
@@ -72,7 +77,7 @@ onUnmounted(() => {
 <template>
   <div class="app-root">
     <DiagramCanvas />
-    <CodePanel />
+    <SidePanel />
     <div class="settings-stack">
       <SupportKofi />
       <SettingsPanel />

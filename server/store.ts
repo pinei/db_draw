@@ -387,6 +387,7 @@ function stripUiLayoutPrefs(layout: Record<string, unknown>): Record<string, unk
   const next = { ...layout }
   delete next.codeFormat
   delete next.codePanelOpen
+  delete next.sidePanelView
   delete next.theme
   return next
 }
@@ -495,6 +496,82 @@ export function mergeModelPatch(
     return { ok: true }
   } catch {
     return { ok: false, status: 500, error: 'save failed' }
+  }
+}
+
+/** One file per scope: er-models/<model>/<model>.scope.<scopeId>.json (flat,
+ * so model clone renames it via the existing id-prefix rule). */
+export function scopeFilePath(userHome: string, modelId: string, scopeId: string): string {
+  return join(userHome, MODELS_DIRNAME, modelId, `${modelId}.scope.${scopeId}.json`)
+}
+
+/** All valid scope objects of a model (skips corrupt files and id mismatches). */
+export function listScopes(dataDir: string, userHome: string, modelId: string): unknown[] {
+  if (!MODEL_ID_RE.test(modelId)) return []
+  const dir = join(userHome, MODELS_DIRNAME, modelId)
+  if (!existsSync(dir)) return []
+  const prefix = `${modelId}.scope.`
+  const out: unknown[] = []
+  for (const entry of readdirSync(dir)) {
+    if (!entry.startsWith(prefix) || !entry.endsWith('.json')) continue
+    const filePath = join(dir, entry)
+    if (!isInsideDataDir(dataDir, filePath)) continue
+    try {
+      const data = JSON.parse(readFileSync(filePath, 'utf-8')) as Record<string, unknown>
+      if (typeof data !== 'object' || data === null || data.id !== entry.slice(prefix.length, -'.json'.length)) continue
+      out.push(data)
+    } catch {
+      // corrupt scope file → skipped
+    }
+  }
+  return out
+}
+
+export function writeScopeFile(
+  dataDir: string,
+  userHome: string,
+  modelId: string,
+  scopeId: string,
+  data: unknown,
+): { ok: true } | { ok: false; status: number; error: string } {
+  if (!MODEL_ID_RE.test(modelId) || !MODEL_ID_RE.test(scopeId)) {
+    return { ok: false, status: 400, error: 'invalid model or scope id' }
+  }
+  if (typeof data !== 'object' || data === null || (data as Record<string, unknown>).id !== scopeId) {
+    return { ok: false, status: 400, error: 'scope id mismatch' }
+  }
+  const filePath = scopeFilePath(userHome, modelId, scopeId)
+  if (!isInsideDataDir(dataDir, filePath)) {
+    return { ok: false, status: 400, error: 'invalid path' }
+  }
+  try {
+    mkdirSync(join(userHome, MODELS_DIRNAME, modelId), { recursive: true })
+    writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
+    return { ok: true }
+  } catch {
+    return { ok: false, status: 500, error: 'save failed' }
+  }
+}
+
+export function deleteScopeFile(
+  dataDir: string,
+  userHome: string,
+  modelId: string,
+  scopeId: string,
+): { ok: true } | { ok: false; status: number; error: string } {
+  if (!MODEL_ID_RE.test(modelId) || !MODEL_ID_RE.test(scopeId)) {
+    return { ok: false, status: 400, error: 'invalid model or scope id' }
+  }
+  const filePath = scopeFilePath(userHome, modelId, scopeId)
+  if (!isInsideDataDir(dataDir, filePath)) {
+    return { ok: false, status: 400, error: 'invalid path' }
+  }
+  if (!existsSync(filePath)) return { ok: false, status: 404, error: 'scope not found' }
+  try {
+    rmSync(filePath, { force: true })
+    return { ok: true }
+  } catch {
+    return { ok: false, status: 500, error: 'delete failed' }
   }
 }
 

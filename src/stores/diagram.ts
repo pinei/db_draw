@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
-import type { DiagramState, PersistedDiagramState, ConnectorStyle, NotationStyle, CodeFormat, ThemeMode, EntityRect, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel, DraggingRoute, RouteOverride, SelfLoopCorner, SelfLoopRouteOverride } from '../model/types'
+import { ref, computed, toRaw, watch } from 'vue'
+import type { DiagramState, ErScope, PersistedDiagramState, ConnectorStyle, NotationStyle, CodeFormat, SidePanelView, ThemeMode, EntityRect, CustomConnectionPoints, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel, DraggingRoute, RouteOverride, SelfLoopCorner, SelfLoopRouteOverride } from '../model/types'
 import { bibliotecaSchema } from '../model/sampleData'
 import {
   SELF_LOOP_DEFAULT_EXTENT,
@@ -8,7 +8,7 @@ import {
   SELF_LOOP_MIN_EXTENT,
 } from '../utils/connectorPath'
 import { pickFreeSelfLoopCorner } from '../utils/connectionPoints'
-import { saveModel, saveModelSlices, anySaveSlice, AuthError, listModels, loadModel, type ModelSaveSlices } from '../utils/persist'
+import { saveModel, saveModelSlices, anySaveSlice, AuthError, listModels, loadModel, listScopes, saveScope, deleteScope as deleteScopeFile, type ModelSaveSlices } from '../utils/persist'
 import { compileDbml, buildDbmlPatch, type DbmlApplyStats, type DbmlIssueLine } from '../utils/dbmlImport'
 import { defaultMeta, sanitizeTags, seedMeta } from '../utils/modelMeta'
 import { useAuthStore } from './auth'
@@ -135,11 +135,13 @@ function buildInitialState(): DiagramState {
       canvasScale: 1,
       codeFormat: 'dbml',
       codePanelOpen: true,
+      sidePanelView: 'code',
       theme: 'system',
     },
     connectorPoints: {},
     labelPositions: {},
     routeOverrides: {},
+    scopes: {},
   }
 }
 
@@ -184,7 +186,7 @@ export const useDiagramStore = defineStore('diagram', () => {
 
   function scheduleSave() {
     if (!useAuthStore().isAuthenticated) return
-    if (!anySaveSlice(dirty.value)) return
+    if (!anySaveSlice(dirty.value) && dirtyScopeIds.value.size === 0) return
     if (saveTimer) clearTimeout(saveTimer)
     saveStatus.value = 'saving'
     saveTimer = setTimeout(() => { void runSave() }, 1500)
@@ -214,30 +216,89 @@ export const useDiagramStore = defineStore('diagram', () => {
   const layout = computed(() => state.value.layout)
   const entityPositions = computed(() => state.value.entityPositions)
 
+  // ─── Scopes ──────────────────────────────────────────────────────────────
+  // Session-active scope (null = full model). Reads/writes below resolve
+  // through the scope when one is active, so the canvas needs no branches.
+
+  const activeScopeId = ref<string | null>(null)
+  const dirtyScopeIds = ref<Set<string>>(new Set())
+
+  const activeScope = computed((): ErScope | null => {
+    const id = activeScopeId.value
+    return id ? state.value.scopes[id] ?? null : null
+  })
+
+  const visibleEntities = computed(() => {
+    const scope = activeScope.value
+    if (!scope) return state.value.schema.entities
+    const included = new Set(scope.entityIds)
+    return state.value.schema.entities.filter((e) => included.has(e.id))
+  })
+
+  const visibleRelationships = computed(() => {
+    const scope = activeScope.value
+    if (!scope) return state.value.schema.relationships
+    const included = new Set(scope.entityIds)
+    return state.value.schema.relationships.filter(
+      (r) => included.has(r.fromEntityId) && included.has(r.toEntityId),
+    )
+  })
+
+  /** Override maps in effect: the scope's when active, else the globals. */
+  function overrideTarget() {
+    return activeScope.value ?? state.value
+  }
+
+  function markScopeDirty(id: string) {
+    if (suppressDirty || !useAuthStore().isAuthenticated) return
+    dirtyScopeIds.value.add(id)
+    scheduleSave()
+  }
+
+  function connectorPointsOf(relationshipId: string): CustomConnectionPoints | undefined {
+    return overrideTarget().connectorPoints[relationshipId]
+  }
+
+  function labelPositionOf(relationshipId: string): LabelPosition | undefined {
+    return overrideTarget().labelPositions[relationshipId]
+  }
+
+  function routeOverrideOf(relationshipId: string): RouteOverride | undefined {
+    return overrideTarget().routeOverrides[relationshipId]
+  }
+
   function entityById(id: string) {
     return state.value.schema.entities.find((e) => e.id === id)
   }
 
   function positionOf(id: string): EntityRect {
-    return state.value.entityPositions[id] ?? { x: 0, y: 0, width: ENTITY_WIDTH, height: 120 }
+    return activeScope.value?.positions[id]
+      ?? state.value.entityPositions[id]
+      ?? { x: 0, y: 0, width: ENTITY_WIDTH, height: 120 }
   }
 
   // ─── Actions ───────────────────────────────────────────────────────────────
 
   function moveEntity(id: string, x: number, y: number) {
-    const pos = state.value.entityPositions[id]
+    const scope = activeScope.value
+    const pos = (scope && scope.entityIds.includes(id) ? scope.positions[id] : undefined)
+      ?? state.value.entityPositions[id]
     if (pos) {
       pos.x = x
       pos.y = y
     }
+    if (scope && scope.positions[id]) markScopeDirty(scope.id)
   }
 
   function updateEntitySize(id: string, width: number, height: number) {
-    const pos = state.value.entityPositions[id]
+    const scope = activeScope.value
+    const pos = (scope && scope.entityIds.includes(id) ? scope.positions[id] : undefined)
+      ?? state.value.entityPositions[id]
     if (pos) {
       pos.width = width
       pos.height = height
     }
+    if (scope && scope.positions[id]) markScopeDirty(scope.id)
   }
 
   function setConnectorStyle(style: ConnectorStyle) {
@@ -257,12 +318,64 @@ export const useDiagramStore = defineStore('diagram', () => {
     state.value.layout.canvasScale = Math.min(3, Math.max(0.2, scale))
   }
 
+  /** Reset zoom to 1x and center the visible content in the viewport.
+   * Centers the scope when one is active, else the full model. The docked
+   * side panel overlays the canvas, so the center is measured on the area
+   * right of it (full content width when collapsed to the icon rail). */
+  function resetCanvasView() {
+    const entities = activeScope.value
+      ? state.value.schema.entities.filter((e) => activeScope.value?.entityIds.includes(e.id))
+      : state.value.schema.entities
+    state.value.layout.canvasScale = 1
+    if (entities.length === 0) {
+      state.value.layout.canvasOffset = { x: 0, y: 0 }
+      return
+    }
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+    for (const e of entities) {
+      const r = activeScope.value?.positions[e.id] ?? state.value.entityPositions[e.id]
+      if (!r) continue
+      minX = Math.min(minX, r.x)
+      minY = Math.min(minY, r.y)
+      maxX = Math.max(maxX, r.x + r.width)
+      maxY = Math.max(maxY, r.y + r.height)
+    }
+    if (!Number.isFinite(minX)) {
+      state.value.layout.canvasOffset = { x: 0, y: 0 }
+      return
+    }
+    const dock = state.value.layout.codePanelOpen ? sidePanelWidth.value : 48
+    const viewW = window.innerWidth
+    const viewH = window.innerHeight
+    state.value.layout.canvasOffset = {
+      x: dock + (viewW - dock) / 2 - (minX + maxX) / 2,
+      y: viewH / 2 - (minY + maxY) / 2,
+    }
+  }
+
   function setCodeFormat(format: CodeFormat) {
     state.value.layout.codeFormat = format
   }
 
   function toggleCodePanel() {
     state.value.layout.codePanelOpen = !state.value.layout.codePanelOpen
+  }
+
+  function setSidePanelView(view: SidePanelView) {
+    state.value.layout.sidePanelView = view
+    // Selecting a rail icon always expands the panel
+    state.value.layout.codePanelOpen = true
+  }
+
+  // Live dock width (px) for layout consumers (e.g. ModelBar offset).
+  // In-memory only — persistence flows through auth.codePanelSize.
+  const sidePanelWidth = ref(280)
+
+  function setSidePanelWidth(width: number) {
+    sidePanelWidth.value = width
   }
 
   function setTheme(theme: ThemeMode) {
@@ -278,14 +391,17 @@ export const useDiagramStore = defineStore('diagram', () => {
   }
 
   function setConnectorPoint(relationshipId: string, endpoint: 'from' | 'to', customEndpoint: CustomConnectorEndpoint | null) {
-    if (!state.value.connectorPoints[relationshipId]) {
-      state.value.connectorPoints[relationshipId] = {}
+    const scope = activeScope.value
+    const maps = scope ?? state.value
+    if (!maps.connectorPoints[relationshipId]) {
+      maps.connectorPoints[relationshipId] = {}
     }
     if (endpoint === 'from') {
-      state.value.connectorPoints[relationshipId].from = customEndpoint ?? undefined
+      maps.connectorPoints[relationshipId].from = customEndpoint ?? undefined
     } else {
-      state.value.connectorPoints[relationshipId].to = customEndpoint ?? undefined
+      maps.connectorPoints[relationshipId].to = customEndpoint ?? undefined
     }
+    if (scope) markScopeDirty(scope.id)
   }
 
   function startDraggingConnectorPoint(relationshipId: string, endpoint: 'from' | 'to', startPoint: CustomConnectorEndpoint) {
@@ -315,11 +431,14 @@ export const useDiagramStore = defineStore('diagram', () => {
   }
 
   function setLabelPosition(relationshipId: string, pos: LabelPosition | null) {
+    const scope = activeScope.value
+    const maps = scope ?? state.value
     if (pos === null) {
-      delete state.value.labelPositions[relationshipId]
+      delete maps.labelPositions[relationshipId]
     } else {
-      state.value.labelPositions[relationshipId] = pos
+      maps.labelPositions[relationshipId] = pos
     }
+    if (scope) markScopeDirty(scope.id)
   }
 
   function startDraggingLabel(relationshipId: string) {
@@ -335,7 +454,7 @@ export const useDiagramStore = defineStore('diagram', () => {
     style: ConnectorStyle,
     value: number | { along?: number; bulge?: number } | null,
   ) {
-    const existing = state.value.routeOverrides[relationshipId] ?? {}
+    const existing = routeOverrideOf(relationshipId) ?? {}
     const next: RouteOverride = { ...existing }
     if (style === 'orthogonal') {
       if (value === null || typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) < 1e-6) {
@@ -370,7 +489,7 @@ export const useDiagramStore = defineStore('diagram', () => {
     relationshipId: string,
     value: { corner?: SelfLoopCorner; extent?: number } | null,
   ) {
-    const existing = state.value.routeOverrides[relationshipId] ?? {}
+    const existing = routeOverrideOf(relationshipId) ?? {}
     const next: RouteOverride = { ...existing }
     if (value === null) {
       delete next.selfLoop
@@ -398,11 +517,14 @@ export const useDiagramStore = defineStore('diagram', () => {
   }
 
   function writeRouteOverride(relationshipId: string, next: RouteOverride) {
+    const scope = activeScope.value
+    const maps = scope ?? state.value
     if (!next.orthogonal && !next.curved && !next.selfLoop) {
-      delete state.value.routeOverrides[relationshipId]
+      delete maps.routeOverrides[relationshipId]
     } else {
-      state.value.routeOverrides[relationshipId] = next
+      maps.routeOverrides[relationshipId] = next
     }
+    if (scope) markScopeDirty(scope.id)
   }
 
   function startDraggingRoute(relationshipId: string) {
@@ -485,6 +607,19 @@ export const useDiagramStore = defineStore('diagram', () => {
     if (patch.tags) state.value.meta.tags = sanitizeTags(patch.tags)
   }
 
+  /** Drop checklist entries + rects of entities that no longer exist. */
+  function purgeScopesOfDeletedEntities() {
+    const alive = new Set(state.value.schema.entities.map((e) => e.id))
+    for (const scope of Object.values(state.value.scopes)) {
+      const before = scope.entityIds.length
+      scope.entityIds = scope.entityIds.filter((id) => alive.has(id))
+      for (const id of Object.keys(scope.positions)) {
+        if (!alive.has(id)) delete scope.positions[id]
+      }
+      if (scope.entityIds.length !== before) markScopeDirty(scope.id)
+    }
+  }
+
   // Drops ALL in-memory diagram data back to pristine defaults. Called on
   // logout so the next login (possibly a different user) can never inherit —
   // and, on a 404 seed, persist — the previous user's diagram.
@@ -496,7 +631,9 @@ export const useDiagramStore = defineStore('diagram', () => {
     suppressDirty = true
     state.value = buildInitialState()
     clearDirty()
+    dirtyScopeIds.value.clear()
     suppressDirty = false
+    activeScopeId.value = null
     hoveredConnectorId.value = null
     draggingConnectorPoint.value = null
     draggingLabel.value = null
@@ -587,9 +724,13 @@ export const useDiagramStore = defineStore('diagram', () => {
       labelPositions,
       connectorPoints,
       routeOverrides,
+      // Scopes live in their own files — the artifact never carries them.
+      // Callers fetch via refreshScopes() after load.
+      scopes: {},
       layout: {
         codeFormat: 'dbml',
         codePanelOpen: true,
+        sidePanelView: 'code',
         theme: 'system',
         ...loaded.layout,
         notationStyle: validNotations.includes(loaded.layout.notationStyle)
@@ -598,7 +739,9 @@ export const useDiagramStore = defineStore('diagram', () => {
       },
     }
     clearDirty()
+    dirtyScopeIds.value.clear()
     suppressDirty = false
+    activeScopeId.value = null
     saveStatus.value = 'idle'
   }
 
@@ -611,18 +754,26 @@ export const useDiagramStore = defineStore('diagram', () => {
   async function runSave(): Promise<void> {
     saveTimer = null
     const slices: ModelSaveSlices = { ...dirty.value }
-    if (!anySaveSlice(slices)) {
+    const scopeIds = [...dirtyScopeIds.value]
+    if (!anySaveSlice(slices) && scopeIds.length === 0) {
       saveStatus.value = 'idle'
       return
     }
-    // Clear claimed slices before await; re-dirty if edits arrive mid-flight
+    // Clear claimed work before await; re-dirty if edits arrive mid-flight
     for (const key of Object.keys(slices) as (keyof ModelSaveSlices)[]) {
       if (slices[key]) dirty.value[key] = false
     }
+    for (const id of scopeIds) dirtyScopeIds.value.delete(id)
     saveStatus.value = 'saving'
     try {
-      await saveModelSlices(currentModelId.value, state.value, slices)
-      if (anySaveSlice(dirty.value)) {
+      if (anySaveSlice(slices)) {
+        await saveModelSlices(currentModelId.value, state.value, slices)
+      }
+      for (const id of scopeIds) {
+        const scope = state.value.scopes[id]
+        if (scope) await saveScope(currentModelId.value, scope)
+      }
+      if (anySaveSlice(dirty.value) || dirtyScopeIds.value.size > 0) {
         scheduleSave()
         return
       }
@@ -632,6 +783,7 @@ export const useDiagramStore = defineStore('diagram', () => {
       for (const key of Object.keys(slices) as (keyof ModelSaveSlices)[]) {
         if (slices[key]) dirty.value[key] = true
       }
+      for (const id of scopeIds) dirtyScopeIds.value.add(id)
       if (e instanceof AuthError) { useAuthStore().logout(); return }
       saveStatus.value = 'error'
     }
@@ -645,12 +797,15 @@ export const useDiagramStore = defineStore('diagram', () => {
       saveTimer = null
     }
     if (!useAuthStore().isAuthenticated) return
-    if (anySaveSlice(dirty.value)) await runSave()
+    if (anySaveSlice(dirty.value) || dirtyScopeIds.value.size > 0) await runSave()
   }
 
   // Slice watches — UI prefs (codeFormat/codePanelOpen/theme) do not dirty
   watch(() => state.value.meta, () => markDirty('meta'), { deep: true })
-  watch(() => state.value.schema, () => markDirty('schema'), { deep: true })
+  watch(() => state.value.schema, () => {
+    purgeScopesOfDeletedEntities()
+    markDirty('schema')
+  }, { deep: true })
   watch(
     () => [
       state.value.entityPositions,
@@ -666,6 +821,103 @@ export const useDiagramStore = defineStore('diagram', () => {
     { deep: true },
   )
 
+  // ─── Scope CRUD (files of their own; option-B connector snapshot) ──────────
+
+  function slugScopeId(name: string): string {
+    const base = name.trim().toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_-]/g, '')
+      .replace(/^[_-]+|[_-]+$/g, '') || 'scope'
+    let id = base
+    for (let n = 2; state.value.scopes[id]; n++) id = `${base}_${n}`
+    return id
+  }
+
+  function setActiveScope(id: string | null) {
+    activeScopeId.value = id && state.value.scopes[id] ? id : null
+  }
+
+  /** Reload scopes from the server (called after model open/load). */
+  async function refreshScopes(): Promise<void> {
+    const list = await listScopes(currentModelId.value)
+    const next: Record<string, ErScope> = {}
+    for (const s of list) next[s.id] = s
+    suppressDirty = true
+    state.value.scopes = next
+    dirtyScopeIds.value.clear()
+    suppressDirty = false
+    if (activeScopeId.value && !next[activeScopeId.value]) activeScopeId.value = null
+  }
+
+  async function createScope(name: string): Promise<{ success: boolean; message?: string; scope?: ErScope }> {
+    const clean = name.trim()
+    if (!clean) return { success: false, message: 'Scope name required' }
+    const id = slugScopeId(clean)
+    const scope: ErScope = {
+      id,
+      name: clean,
+      entityIds: [],
+      positions: {},
+      // Option B: snapshot of the current global overrides at creation.
+      // Diverges silently afterwards — by design, documented in ScopeView.
+      // toRaw: structuredClone rejects Pinia's reactive proxies.
+      connectorPoints: structuredClone(toRaw(state.value.connectorPoints)),
+      labelPositions: structuredClone(toRaw(state.value.labelPositions)),
+      routeOverrides: structuredClone(toRaw(state.value.routeOverrides)),
+    }
+    state.value.scopes[id] = scope
+    activeScopeId.value = id
+    try {
+      await saveScope(currentModelId.value, scope)
+    } catch (e) {
+      markScopeDirty(id)
+      if (e instanceof AuthError) { useAuthStore().logout(); return { success: false, message: 'Invalid session — please sign in again' } }
+      return { success: false, message: e instanceof Error ? e.message : 'Failed to save scope' }
+    }
+    return { success: true, scope }
+  }
+
+  async function renameScope(id: string, name: string): Promise<{ success: boolean; message?: string }> {
+    const scope = state.value.scopes[id]
+    const clean = name.trim()
+    if (!scope) return { success: false, message: 'Scope not found' }
+    if (!clean) return { success: false, message: 'Scope name required' }
+    if (clean === scope.name) return { success: true }
+    scope.name = clean
+    markScopeDirty(id)
+    return { success: true }
+  }
+
+  async function deleteScope(id: string): Promise<{ success: boolean; message?: string }> {
+    if (!state.value.scopes[id]) return { success: false, message: 'Scope not found' }
+    try {
+      await deleteScopeFile(currentModelId.value, id)
+    } catch (e) {
+      if (e instanceof AuthError) { useAuthStore().logout(); return { success: false, message: 'Invalid session — please sign in again' } }
+      return { success: false, message: e instanceof Error ? e.message : 'Failed to delete scope' }
+    }
+    delete state.value.scopes[id]
+    dirtyScopeIds.value.delete(id)
+    if (activeScopeId.value === id) activeScopeId.value = null
+    return { success: true }
+  }
+
+  /** Checklist toggle: check copies the rect from the main diagram. */
+  function toggleScopeEntity(scopeId: string, entityId: string) {
+    const scope = state.value.scopes[scopeId]
+    if (!scope || !entityById(entityId)) return
+    const at = scope.entityIds.indexOf(entityId)
+    if (at >= 0) {
+      scope.entityIds.splice(at, 1)
+      delete scope.positions[entityId]
+    } else {
+      scope.entityIds.push(entityId)
+      const rect = state.value.entityPositions[entityId]
+      if (rect) scope.positions[entityId] = { ...rect }
+    }
+    markScopeDirty(scopeId)
+  }
+
   // Open another model (flushes the current one first). Missing remote model
   // (deleted elsewhere) seeds a fresh blank one instead of failing.
   async function openModel(id: string): Promise<{ success: boolean; message?: string }> {
@@ -677,6 +929,7 @@ export const useDiagramStore = defineStore('diagram', () => {
       if (loaded) {
         loadState(loaded, id)
         setCurrentModelId(id)
+        await refreshScopes()
       } else {
         seedFreshModel(id, { blank: true })
         await persistCurrent()
@@ -730,8 +983,12 @@ export const useDiagramStore = defineStore('diagram', () => {
     setNotationStyle,
     setCanvasOffset,
     setCanvasScale,
+    resetCanvasView,
     setCodeFormat,
     toggleCodePanel,
+    setSidePanelView,
+    sidePanelWidth,
+    setSidePanelWidth,
     setTheme,
     hoveredConnectorId,
     setHoveredConnector,
@@ -762,5 +1019,19 @@ export const useDiagramStore = defineStore('diagram', () => {
     openModel,
     createModel,
     flushSave,
+    activeScopeId,
+    activeScope,
+    dirtyScopeIds,
+    visibleEntities,
+    visibleRelationships,
+    connectorPointsOf,
+    labelPositionOf,
+    routeOverrideOf,
+    setActiveScope,
+    refreshScopes,
+    createScope,
+    renameScope,
+    deleteScope,
+    toggleScopeEntity,
   }
 })

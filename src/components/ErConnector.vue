@@ -46,25 +46,25 @@ const store = useDiagramStore()
 const isSelfLoop = computed(() => props.relationship.fromEntityId === props.relationship.toEntityId)
 
 const selfLoopCorner = computed((): SelfLoopCorner =>
-  store.state.routeOverrides[props.relationship.id]?.selfLoop?.corner ?? 'ne',
+  store.routeOverrideOf(props.relationship.id)?.selfLoop?.corner ?? 'ne',
 )
 
 const selfLoopExtent = computed(() =>
-  store.state.routeOverrides[props.relationship.id]?.selfLoop?.extent ?? SELF_LOOP_DEFAULT_EXTENT,
+  store.routeOverrideOf(props.relationship.id)?.selfLoop?.extent ?? SELF_LOOP_DEFAULT_EXTENT,
 )
 
 const geometry = computed(() => {
   if (isSelfLoop.value) return selfLoopPoints(props.fromRect, selfLoopCorner.value)
-  const customPoints = store.state.connectorPoints[props.relationship.id]
+  const customPoints = store.connectorPointsOf(props.relationship.id)
   return getConnectionPoints(props.fromRect, props.toRect, customPoints)
 })
 
 const midOffset = computed(() =>
-  store.state.routeOverrides[props.relationship.id]?.orthogonal?.midOffset ?? 0,
+  store.routeOverrideOf(props.relationship.id)?.orthogonal?.midOffset ?? 0,
 )
 
 const curvedNudge = computed(() => {
-  const c = store.state.routeOverrides[props.relationship.id]?.curved
+  const c = store.routeOverrideOf(props.relationship.id)?.curved
   return {
     along: c?.along ?? 0,
     bulge: c?.bulge ?? 0,
@@ -186,7 +186,7 @@ function selfLoopLabelPos(
 // would fall inside the entity card)
 const labelPos = computed(() => {
   const { source, target } = geometry.value
-  const stored = store.state.labelPositions[props.relationship.id]
+  const stored = store.labelPositionOf(props.relationship.id)
   if (stored) {
     if (isSelfLoop.value && stored.selfLoop) {
       const corners = selfLoopCorners(source, target, selfLoopExtent.value, selfLoopCorner.value)
@@ -234,7 +234,7 @@ const showRouteHandle = computed(() => routeInteraction.value && !!routeHandle.v
 function onLabelMouseDown(e: MouseEvent) {
   e.preventDefault()
   e.stopPropagation()
-  if (isSelfLoop.value && !store.state.labelPositions[props.relationship.id]) {
+  if (isSelfLoop.value && !store.labelPositionOf(props.relationship.id)) {
     const { source, target } = geometry.value
     const defaultPosition = selfLoopLabelPos(source, target)
     const corners = selfLoopCorners(source, target, selfLoopExtent.value, selfLoopCorner.value)

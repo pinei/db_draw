@@ -98,7 +98,7 @@ async function exportDiagram(format: DiagramExportFormat) {
       <span class="section-label">Zoom {{ Math.round(layout.canvasScale * 100) }}%</span>
       <div class="btn-group">
         <button class="btn icon" aria-label="Zoom out" @click="store.setCanvasScale(layout.canvasScale - 0.1)"><Minus :size="13" /></button>
-        <button class="btn" @click="store.setCanvasScale(1)">Reset</button>
+        <button class="btn" title="Reset zoom to 1x and center the diagram" @click="store.resetCanvasView()">Reset</button>
         <button class="btn icon" aria-label="Zoom in" @click="store.setCanvasScale(layout.canvasScale + 0.1)"><Plus :size="13" /></button>
       </div>
     </div>
