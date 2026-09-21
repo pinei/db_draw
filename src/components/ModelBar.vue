@@ -86,18 +86,6 @@ function onKeydown(e: KeyboardEvent) {
         <ChevronDown :size="12" class="chev" />
       </div>
 
-      <button
-        v-if="store.activeScope"
-        type="button"
-        class="scope-badge"
-        :title="`Viewing scope ${store.activeScope.name} — click to exit`"
-        @click="store.setActiveScope(null)"
-      >
-        <Scan :size="12" />
-        <span class="scope-badge-name">{{ store.activeScope.name }}</span>
-        <X :size="12" />
-      </button>
-
       <div v-if="open" class="edit-popover" @keydown="onKeydown">
       <label class="edit-field">
         <span>Model id (folder, read-only)</span>
@@ -137,6 +125,18 @@ function onKeydown(e: KeyboardEvent) {
     </div>
 
     <button
+      v-if="store.activeScope"
+      type="button"
+      class="scope-badge"
+      :title="`Viewing scope ${store.activeScope.name} — click to exit`"
+      @click="store.setActiveScope(null)"
+    >
+      <Scan :size="12" />
+      <span class="scope-badge-name">{{ store.activeScope.name }}</span>
+      <X :size="12" />
+    </button>
+
+    <button
       type="button"
       class="manage-btn"
       title="New model"
@@ -168,8 +168,8 @@ function onKeydown(e: KeyboardEvent) {
   z-index: 100;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
   pointer-events: none;
   user-select: none;
 }
@@ -216,6 +216,7 @@ function onKeydown(e: KeyboardEvent) {
   justify-content: center;
   font-size: 13px;
   line-height: 1;
+  color: var(--c-btn-fg);
   background: var(--c-panel-bg);
   border: 1px solid var(--c-panel-border);
   border-radius: 50%;
