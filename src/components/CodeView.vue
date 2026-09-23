@@ -2,19 +2,12 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { CircleQuestionMark, X } from 'lucide-vue-next'
 import { useDiagramStore } from '../stores/diagram'
-import { generateDbml, generateMermaid } from '../utils/codePlaceholder'
-import { highlightDbml, highlightMermaid } from '../utils/dbmlHighlight'
-import type { CodeFormat } from '../model/types'
+import { generateDbml } from '../utils/codePlaceholder'
+import { highlightDbml } from '../utils/dbmlHighlight'
 import type { DbmlApplyStats, DbmlIssueLine } from '../utils/dbmlImport'
 
 const store = useDiagramStore()
-const layout = computed(() => store.layout)
 const textareaEl = ref<HTMLTextAreaElement | null>(null)
-
-const formatOptions: { value: CodeFormat; label: string }[] = [
-  { value: 'dbml',    label: 'DBML' },
-  { value: 'mermaid', label: 'Mermaid' },
-]
 
 // Local draft kept in sync with external schema changes (e.g. loadState)
 const draftDbml = ref('')
@@ -22,14 +15,6 @@ watch(
   () => generateDbml(store.state.schema),
   (generated) => { draftDbml.value = generated },
   { immediate: true },
-)
-
-const isEditable = computed(() => layout.value.codeFormat === 'dbml')
-
-const codeText = computed(() =>
-  layout.value.codeFormat === 'dbml'
-    ? draftDbml.value
-    : generateMermaid(store.state.schema),
 )
 
 const parseStatus = ref<'idle' | 'success' | 'error'>('idle')
@@ -88,18 +73,15 @@ function dismissApplyResult() {
 }
 
 // ─── Syntax highlighting (overlay) ───────────────────────────────────────────
-// Highlighted <pre> sits under a transparent <textarea> (DBML only). Same font
-// metrics + scroll sync keep caret and tokens aligned while typing. Mermaid
-// stays read-only on the <pre> alone. Table names come from the live schema.
+// Highlighted <pre> sits under a transparent <textarea>. Same font metrics +
+// scroll sync keep caret and tokens aligned while typing. Table names come
+// from the live schema.
 
 const tableNames = computed(() => store.state.schema.entities.map((e) => e.name))
 
 const highlightedHtml = computed(() => {
-  const isDbml = layout.value.codeFormat === 'dbml'
-  const src = isDbml ? draftDbml.value : generateMermaid(store.state.schema)
-  const html = isDbml
-    ? highlightDbml(src, tableNames.value, errorLineSet.value)
-    : highlightMermaid(src, tableNames.value)
+  const src = draftDbml.value
+  const html = highlightDbml(src, tableNames.value, errorLineSet.value)
   // <pre> drops a trailing newline — keep it so the last line never collapses
   return src.endsWith('\n') ? html + '\n' : html
 })
@@ -169,20 +151,7 @@ function scrollToLine(line: number) {
 
 <template>
   <div class="code-view">
-        <div class="format-row">
-          <div class="btn-group">
-            <button
-              v-for="opt in formatOptions"
-              :key="opt.value"
-              class="btn"
-              :class="{ active: layout.codeFormat === opt.value }"
-              @click.stop="store.setCodeFormat(opt.value)"
-            >{{ opt.label }}</button>
-          </div>
-        </div>
-
         <a
-          v-if="layout.codeFormat === 'dbml'"
           class="docs-link"
           href="https://dbml.dbdiagram.io/docs/"
           target="_blank"
@@ -197,17 +166,14 @@ function scrollToLine(line: number) {
         <div class="code-area-wrapper">
           <pre
             ref="previewEl"
-            class="code-layer code-preview"
-            :class="{ backdrop: isEditable }"
-            :aria-hidden="isEditable ? 'true' : undefined"
-            :aria-label="isEditable ? undefined : 'Mermaid code (read-only)'"
+            class="code-layer code-preview backdrop"
+            aria-hidden="true"
             v-html="highlightedHtml"
           />
           <textarea
-            v-if="isEditable"
             ref="textareaEl"
             class="code-layer code-area"
-            :value="codeText"
+            :value="draftDbml"
             spellcheck="false"
             wrap="soft"
             aria-label="DBML code"
@@ -217,7 +183,7 @@ function scrollToLine(line: number) {
           />
         </div>
 
-        <button class="apply-btn" :disabled="!isEditable" @click="handleApply">Apply</button>
+        <button class="apply-btn" @click="handleApply">Apply</button>
 
         <div v-if="parseStatus === 'success' && applyStats" class="parse-message success">
           <button type="button" class="apply-dismiss" title="Dismiss" aria-label="Dismiss" @click="dismissApplyResult"><X :size="12" /></button>
@@ -274,22 +240,6 @@ function scrollToLine(line: number) {
   overflow: hidden;
 }
 
-.format-row {
-  padding-top: 10px;
-}
-
-/* Buttons keep a standard max width and stay centered as the dock widens. */
-.btn-group {
-  display: flex;
-  overflow: hidden;
-  border: 1px solid var(--c-btn-border);
-  border-radius: 6px;
-  background: var(--c-btn-bg);
-  width: 100%;
-  max-width: 240px;
-  margin-inline: auto;
-}
-
 .docs-link {
   display: inline-flex;
   align-items: center;
@@ -310,34 +260,6 @@ function scrollToLine(line: number) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.btn-group .btn {
-  flex: 1;
-  padding: 5px 8px;
-  font-size: 11px;
-  font-family: inherit;
-  border: none;
-  border-right: 1px solid var(--c-btn-border);
-  border-radius: 0;
-  background: transparent;
-  color: var(--c-btn-fg);
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-  white-space: nowrap;
-}
-
-.btn-group .btn:last-child {
-  border-right: none;
-}
-
-.btn-group .btn:hover {
-  background: var(--c-btn-hover-bg);
-}
-
-.btn-group .btn.active {
-  background: var(--c-btn-active-bg);
-  color: var(--c-btn-active-fg);
 }
 
 .code-area-wrapper {
@@ -423,13 +345,8 @@ function scrollToLine(line: number) {
   flex: none;
 }
 
-.apply-btn:hover:not(:disabled) {
+.apply-btn:hover {
   background: var(--c-btn-hover-bg);
-}
-
-.apply-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
 }
 
 .parse-message {

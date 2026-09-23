@@ -62,7 +62,6 @@ export interface ModelSummary {
 
 export type ConnectorStyle = 'curved' | 'orthogonal'
 export type NotationStyle = 'crowsfoot' | 'minmax' | 'barker'
-export type CodeFormat = 'dbml' | 'mermaid'
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 /** Active view of the left docked side panel (empty ScopeView is a placeholder). */
@@ -73,7 +72,6 @@ export interface DiagramLayout {
   notationStyle: NotationStyle
   canvasOffset: { x: number; y: number }
   canvasScale: number
-  codeFormat: CodeFormat
   codePanelOpen: boolean
   sidePanelView: SidePanelView
   theme: ThemeMode
@@ -163,7 +161,7 @@ export interface DiagramState {
 
 // Keys of DiagramLayout that are UI preferences, not diagram properties —
 // they live in memory only and are stripped before writing data/:name/*.json.
-export type UiPreferenceKey = 'codeFormat' | 'codePanelOpen' | 'sidePanelView' | 'theme'
+export type UiPreferenceKey = 'codePanelOpen' | 'sidePanelView' | 'theme'
 
 export type PersistedDiagramLayout = Omit<DiagramLayout, UiPreferenceKey>
 

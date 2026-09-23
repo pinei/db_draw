@@ -5,12 +5,14 @@ import { useDiagramStore } from '../stores/diagram'
 import { useAuthStore } from '../stores/auth'
 import { downloadDiagram, type DiagramExportFormat } from '../utils/diagramExport'
 import type { ConnectorStyle, NotationStyle, ThemeMode } from '../model/types'
+import MermaidExportDialog from './MermaidExportDialog.vue'
 
 const store = useDiagramStore()
 const auth = useAuthStore()
 const layout = computed(() => store.layout)
 const exporting = ref(false)
 const exportMessage = ref('')
+const mermaidOpen = ref(false)
 
 const connectorOptions: { value: ConnectorStyle; label: string }[] = [
   { value: 'curved',      label: 'Curved' },
@@ -110,8 +112,10 @@ async function exportDiagram(format: DiagramExportFormat) {
       <div class="btn-group">
         <button class="btn" :disabled="exporting" @click="exportDiagram('png')">PNG</button>
         <button class="btn" :disabled="exporting" @click="exportDiagram('svg')">SVG</button>
+        <button class="btn" @click="mermaidOpen = true">Mermaid</button>
       </div>
       <div v-if="exportMessage" class="export-error">{{ exportMessage }}</div>
+      <MermaidExportDialog v-if="mermaidOpen" @close="mermaidOpen = false" />
     </div>
 
     <div class="divider" />

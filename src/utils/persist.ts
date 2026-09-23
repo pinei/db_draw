@@ -130,7 +130,7 @@ export function buildModelSavePayload(state: DiagramState, slices: ModelSaveSlic
   if (slices.meta) payload.meta = state.meta
   if (slices.schema) payload.schema = state.schema
   if (slices.presentation) {
-    const { codeFormat: _cf, codePanelOpen: _cpo, sidePanelView: _spv, theme: _th, ...persistedLayout } = state.layout
+    const { codePanelOpen: _cpo, sidePanelView: _spv, theme: _th, ...persistedLayout } = state.layout
     payload.presentation = {
       entityPositions: state.entityPositions,
       connectorPoints: state.connectorPoints,
