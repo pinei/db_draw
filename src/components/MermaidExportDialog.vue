@@ -104,21 +104,42 @@ function markCopied() {
   copiedTimer = setTimeout(() => { copied.value = false }, 1500)
 }
 
+function fallbackCopy(text: string): boolean {
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.setAttribute('readonly', '')
+  ta.style.position = 'fixed'
+  ta.style.top = '0'
+  ta.style.left = '0'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.focus()
+  ta.select()
+  let ok = false
+  try { ok = document.execCommand('copy') } catch { ok = false }
+  ta.remove()
+  return ok
+}
+
+async function copyText(text: string): Promise<boolean> {
+  const write = navigator.clipboard?.writeText(text)
+  if (write) {
+    const ok = await Promise.race([
+      write.then(() => true, () => false),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 500)),
+    ])
+    if (ok) return true
+  }
+  return fallbackCopy(text)
+}
+
 async function copyCode() {
-  try {
-    await navigator.clipboard.writeText(source.value)
-    markCopied()
-  } catch {
-    const ta = document.createElement('textarea')
-    ta.value = source.value
-    ta.setAttribute('readonly', '')
-    ta.style.position = 'fixed'
-    ta.style.left = '-9999px'
-    document.body.appendChild(ta)
-    ta.select()
-    const ok = document.execCommand('copy')
-    ta.remove()
-    if (ok) markCopied()
+  // Show feedback immediately. Some browsers leave clipboard.writeText pending.
+  markCopied()
+  const ok = await copyText(source.value)
+  if (!ok) {
+    copied.value = false
+    if (copiedTimer) clearTimeout(copiedTimer)
   }
 }
 
