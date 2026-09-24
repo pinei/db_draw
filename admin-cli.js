@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash, randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -31,10 +31,12 @@ function usage() {
   console.log(`Usage:
   npm run admin-cli -- create-user <email>
   npm run admin-cli -- delete-user <email>
+  npm run admin-cli -- reset-token <email>
 
 Example:
   npm run admin-cli -- create-user developer@example.com
-  npm run admin-cli -- delete-user developer@example.com`)
+  npm run admin-cli -- delete-user developer@example.com
+  npm run admin-cli -- reset-token developer@example.com`)
 }
 
 function createUser(emailInput) {
@@ -64,6 +66,38 @@ function createUser(emailInput) {
   console.log(`Arquivo: ${userFile}`)
 }
 
+function resetToken(emailInput) {
+  const parsed = parseEmail(emailInput)
+  if (!parsed) {
+    throw new Error('informe um email válido')
+  }
+
+  const userFile = join(dataDir, 'user', parsed.domain, parsed.username, 'user.json')
+  if (!existsSync(userFile)) {
+    throw new Error(`o usuário ${parsed.email} não existe`)
+  }
+
+  let record
+  try {
+    record = JSON.parse(readFileSync(userFile, 'utf8'))
+  } catch {
+    throw new Error(`não foi possível ler ${userFile}`)
+  }
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    throw new Error(`não foi possível ler ${userFile}`)
+  }
+
+  const token = randomBytes(32).toString('hex')
+  record.email = parsed.email
+  record.tokenHash = hashSecret(token)
+  delete record.token
+
+  writeFileSync(userFile, `${JSON.stringify(record, null, 2)}\n`, 'utf8')
+
+  console.log(`Token regerado: ${parsed.email}`)
+  console.log(`Token: ${token}`)
+}
+
 function deleteUser(emailInput) {
   const parsed = parseEmail(emailInput)
   if (!parsed) {
@@ -87,10 +121,11 @@ function main() {
     usage()
     return
   }
-  if (command !== 'create-user' && command !== 'delete-user') {
+  if (command !== 'create-user' && command !== 'delete-user' && command !== 'reset-token') {
     throw new Error(`comando desconhecido: ${command}`)
   }
   if (command === 'create-user') createUser(email)
+  else if (command === 'reset-token') resetToken(email)
   else deleteUser(email)
 }
 
