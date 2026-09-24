@@ -27,8 +27,6 @@ const source = computed(() => generateMermaid({
   relationships: store.visibleRelationships,
 }))
 
-const scopeLabel = computed(() => store.activeScope?.name ?? 'Full model')
-
 const tableNames = computed(() => store.visibleEntities.map((e) => e.name))
 
 const highlightedHtml = computed(() => {
@@ -97,6 +95,66 @@ function showDiagram() {
   void renderDiagram()
 }
 
+const copied = ref(false)
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
+
+function markCopied() {
+  copied.value = true
+  if (copiedTimer) clearTimeout(copiedTimer)
+  copiedTimer = setTimeout(() => { copied.value = false }, 1500)
+}
+
+function fallbackCopy(text: string): boolean {
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.setAttribute('readonly', '')
+  ta.style.position = 'fixed'
+  ta.style.top = '0'
+  ta.style.left = '0'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.focus()
+  ta.select()
+  let ok = false
+  try { ok = document.execCommand('copy') } catch { ok = false }
+  ta.remove()
+  return ok
+}
+
+function copyCode() {
+  // Must run in the click turn. After an await the browser drops the user
+  // gesture and both clipboard APIs fail, so the label never sticks.
+  const text = source.value
+  if (fallbackCopy(text)) {
+    markCopied()
+    return
+  }
+  const write = navigator.clipboard?.writeText(text)
+  if (!write) return
+  void write.then(() => markCopied(), () => {})
+}
+
+function downloadSvg() {
+  if (!svgHtml.value) return
+  let svg = svgHtml.value.trim()
+  if (!svg.includes('xmlns=')) {
+    svg = svg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')
+  }
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n${svg}`
+  const base = store.state.meta.name || store.state.meta.id || store.currentModelId
+  const clean = base.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_|_$/g, '') || 'diagram'
+  const blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${clean}.mermaid.svg`
+  a.rel = 'noopener'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 watch(source, () => {
   renderedKey.value = ''
   if (view.value === 'diagram') void renderDiagram()
@@ -120,6 +178,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   systemMedia.removeEventListener('change', onSystemTheme)
+  if (copiedTimer) clearTimeout(copiedTimer)
   renderSeq += 1
 })
 </script>
@@ -137,10 +196,7 @@ onUnmounted(() => {
         @keydown.escape="emit('close')"
       >
         <div class="header">
-          <div class="header-text">
-            <span id="mermaid-export-title" class="title">Mermaid</span>
-            <span class="scope-label">{{ scopeLabel }}</span>
-          </div>
+          <span id="mermaid-export-title" class="title">Mermaid</span>
           <button type="button" class="icon-btn" aria-label="Close" @click="emit('close')"><X :size="16" /></button>
         </div>
 
@@ -174,6 +230,22 @@ onUnmounted(() => {
             <div v-else-if="renderError" class="diagram-state error">{{ renderError }}</div>
             <div v-else class="diagram-frame" v-html="svgHtml" />
           </div>
+        </div>
+
+        <div class="action-bar">
+          <button
+            v-if="view === 'code'"
+            type="button"
+            class="action-btn"
+            @click="copyCode"
+          >{{ copied ? 'Copied' : 'Copy' }}</button>
+          <button
+            v-else
+            type="button"
+            class="action-btn"
+            :disabled="!svgHtml || rendering || !!renderError"
+            @click="downloadSvg"
+          >Download</button>
         </div>
 
         <div ref="renderHost" class="render-host" aria-hidden="true" />
@@ -219,27 +291,12 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--c-panel-border);
 }
 
-.header-text {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-}
-
 .title {
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--c-panel-label);
-}
-
-.scope-label {
-  font-size: 11px;
-  color: var(--c-field-type);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .icon-btn {
@@ -303,10 +360,39 @@ onUnmounted(() => {
   color: var(--c-btn-active-fg);
 }
 
+.action-bar {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  padding: 12px 16px 16px;
+}
+
+.action-btn {
+  min-width: 96px;
+  padding: 5px 14px;
+  font-size: 11px;
+  font-family: inherit;
+  border: 1px solid var(--c-btn-border);
+  border-radius: 6px;
+  background: var(--c-btn-bg);
+  color: var(--c-btn-fg);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: var(--c-btn-hover-bg);
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .body {
   flex: 1;
   min-height: 0;
-  margin: 12px 16px 16px;
+  margin: 12px 16px 0;
   border: 1px solid var(--c-panel-border);
   border-radius: 6px;
   background: var(--c-canvas-bg);
