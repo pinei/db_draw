@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Check, Copy, Download, X } from 'lucide-vue-next'
+import { X } from 'lucide-vue-next'
 import { useDiagramStore } from '../stores/diagram'
 import { generateMermaid } from '../utils/codePlaceholder'
 import { highlightMermaid } from '../utils/dbmlHighlight'
@@ -205,30 +205,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="viewport">
-          <button
-            v-if="view === 'code'"
-            type="button"
-            class="corner-btn"
-            :class="{ copied }"
-            :aria-label="copied ? 'Copied' : 'Copy Mermaid code'"
-            :title="copied ? 'Copied' : 'Copy'"
-            @click="copyCode"
-          >
-            <Check v-if="copied" :size="14" />
-            <Copy v-else :size="14" />
-          </button>
-          <button
-            v-else-if="svgHtml && !rendering && !renderError"
-            type="button"
-            class="corner-btn"
-            aria-label="Download SVG"
-            title="Download SVG"
-            @click="downloadSvg"
-          >
-            <Download :size="14" />
-          </button>
-          <div class="body">
+        <div class="body">
           <pre
             v-if="view === 'code'"
             class="mmd-preview"
@@ -241,7 +218,22 @@ onUnmounted(() => {
             <div v-else-if="renderError" class="diagram-state error">{{ renderError }}</div>
             <div v-else class="diagram-frame" v-html="svgHtml" />
           </div>
-          </div>
+        </div>
+
+        <div class="action-bar">
+          <button
+            v-if="view === 'code'"
+            type="button"
+            class="action-btn"
+            @click="copyCode"
+          >{{ copied ? 'Copied' : 'Copy' }}</button>
+          <button
+            v-else
+            type="button"
+            class="action-btn"
+            :disabled="!svgHtml || rendering || !!renderError"
+            @click="downloadSvg"
+          >Download</button>
         </div>
 
         <div ref="renderHost" class="render-host" aria-hidden="true" />
@@ -356,46 +348,39 @@ onUnmounted(() => {
   color: var(--c-btn-active-fg);
 }
 
-.viewport {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  margin: 12px 16px 16px;
+.action-bar {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  padding: 12px 16px 16px;
 }
 
-.corner-btn {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 2;
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
+.action-btn {
+  min-width: 96px;
+  padding: 5px 14px;
+  font-size: 11px;
+  font-family: inherit;
   border: 1px solid var(--c-btn-border);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--c-panel-bg) 88%, transparent);
-  color: var(--c-panel-label);
-  cursor: pointer;
-}
-
-.corner-btn:hover {
-  background: var(--c-btn-hover-bg);
+  background: var(--c-btn-bg);
   color: var(--c-btn-fg);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
 }
 
-.corner-btn.copied {
-  color: #15803d;
+.action-btn:hover:not(:disabled) {
+  background: var(--c-btn-hover-bg);
 }
 
-:global(html[data-theme='dark']) .corner-btn.copied {
-  color: #4ade80;
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .body {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  margin: 12px 16px 0;
   border: 1px solid var(--c-panel-border);
   border-radius: 6px;
   background: var(--c-canvas-bg);
@@ -404,7 +389,7 @@ onUnmounted(() => {
 
 .mmd-preview {
   margin: 0;
-  padding: 10px 40px 10px 10px;
+  padding: 10px;
   min-height: 100%;
   box-sizing: border-box;
   font-family: var(--font-mono);
