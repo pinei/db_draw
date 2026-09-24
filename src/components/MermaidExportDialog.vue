@@ -121,26 +121,17 @@ function fallbackCopy(text: string): boolean {
   return ok
 }
 
-async function copyText(text: string): Promise<boolean> {
+function copyCode() {
+  // Must run in the click turn. After an await the browser drops the user
+  // gesture and both clipboard APIs fail, so the label never sticks.
+  const text = source.value
+  if (fallbackCopy(text)) {
+    markCopied()
+    return
+  }
   const write = navigator.clipboard?.writeText(text)
-  if (write) {
-    const ok = await Promise.race([
-      write.then(() => true, () => false),
-      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 500)),
-    ])
-    if (ok) return true
-  }
-  return fallbackCopy(text)
-}
-
-async function copyCode() {
-  // Show feedback immediately. Some browsers leave clipboard.writeText pending.
-  markCopied()
-  const ok = await copyText(source.value)
-  if (!ok) {
-    copied.value = false
-    if (copiedTimer) clearTimeout(copiedTimer)
-  }
+  if (!write) return
+  void write.then(() => markCopied(), () => {})
 }
 
 function downloadSvg() {
