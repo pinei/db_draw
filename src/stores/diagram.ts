@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, toRaw, watch } from 'vue'
-import type { DiagramState, ErScope, PersistedDiagramState, ConnectorStyle, NotationStyle, CodeFormat, SidePanelView, ThemeMode, EntityRect, CustomConnectionPoints, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel, DraggingRoute, RouteOverride, SelfLoopCorner, SelfLoopRouteOverride } from '../model/types'
+import type { DiagramState, ErScope, PersistedDiagramState, ConnectorStyle, NotationStyle, SidePanelView, ThemeMode, EntityRect, CustomConnectionPoints, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel, DraggingRoute, RouteOverride, SelfLoopCorner, SelfLoopRouteOverride } from '../model/types'
 import { bibliotecaSchema } from '../model/sampleData'
 import {
   SELF_LOOP_DEFAULT_EXTENT,
@@ -133,7 +133,6 @@ function buildInitialState(): DiagramState {
       notationStyle: 'crowsfoot',
       canvasOffset: { x: 0, y: 0 },
       canvasScale: 1,
-      codeFormat: 'dbml',
       codePanelOpen: true,
       sidePanelView: 'code',
       theme: 'system',
@@ -354,10 +353,6 @@ export const useDiagramStore = defineStore('diagram', () => {
       x: dock + (viewW - dock) / 2 - (minX + maxX) / 2,
       y: viewH / 2 - (minY + maxY) / 2,
     }
-  }
-
-  function setCodeFormat(format: CodeFormat) {
-    state.value.layout.codeFormat = format
   }
 
   function toggleCodePanel() {
@@ -728,7 +723,6 @@ export const useDiagramStore = defineStore('diagram', () => {
       // Callers fetch via refreshScopes() after load.
       scopes: {},
       layout: {
-        codeFormat: 'dbml',
         codePanelOpen: true,
         sidePanelView: 'code',
         theme: 'system',
@@ -800,7 +794,7 @@ export const useDiagramStore = defineStore('diagram', () => {
     if (anySaveSlice(dirty.value) || dirtyScopeIds.value.size > 0) await runSave()
   }
 
-  // Slice watches — UI prefs (codeFormat/codePanelOpen/theme) do not dirty
+  // Slice watches — UI prefs (codePanelOpen/sidePanelView/theme) do not dirty
   watch(() => state.value.meta, () => markDirty('meta'), { deep: true })
   watch(() => state.value.schema, () => {
     purgeScopesOfDeletedEntities()
@@ -984,7 +978,6 @@ export const useDiagramStore = defineStore('diagram', () => {
     setCanvasOffset,
     setCanvasScale,
     resetCanvasView,
-    setCodeFormat,
     toggleCodePanel,
     setSidePanelView,
     sidePanelWidth,
