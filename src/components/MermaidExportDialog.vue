@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { X } from 'lucide-vue-next'
+import { Check, Copy, Download, X } from 'lucide-vue-next'
 import { useDiagramStore } from '../stores/diagram'
 import { generateMermaid } from '../utils/codePlaceholder'
 import { highlightMermaid } from '../utils/dbmlHighlight'
@@ -26,8 +26,6 @@ const source = computed(() => generateMermaid({
   entities: store.visibleEntities,
   relationships: store.visibleRelationships,
 }))
-
-const scopeLabel = computed(() => store.activeScope?.name ?? 'Full model')
 
 const tableNames = computed(() => store.visibleEntities.map((e) => e.name))
 
@@ -97,6 +95,54 @@ function showDiagram() {
   void renderDiagram()
 }
 
+const copied = ref(false)
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
+
+function markCopied() {
+  copied.value = true
+  if (copiedTimer) clearTimeout(copiedTimer)
+  copiedTimer = setTimeout(() => { copied.value = false }, 1500)
+}
+
+async function copyCode() {
+  try {
+    await navigator.clipboard.writeText(source.value)
+    markCopied()
+  } catch {
+    const ta = document.createElement('textarea')
+    ta.value = source.value
+    ta.setAttribute('readonly', '')
+    ta.style.position = 'fixed'
+    ta.style.left = '-9999px'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    ta.remove()
+    if (ok) markCopied()
+  }
+}
+
+function downloadSvg() {
+  if (!svgHtml.value) return
+  let svg = svgHtml.value.trim()
+  if (!svg.includes('xmlns=')) {
+    svg = svg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')
+  }
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n${svg}`
+  const base = store.state.meta.name || store.state.meta.id || store.currentModelId
+  const clean = base.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_|_$/g, '') || 'diagram'
+  const blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${clean}.mermaid.svg`
+  a.rel = 'noopener'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 watch(source, () => {
   renderedKey.value = ''
   if (view.value === 'diagram') void renderDiagram()
@@ -120,6 +166,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   systemMedia.removeEventListener('change', onSystemTheme)
+  if (copiedTimer) clearTimeout(copiedTimer)
   renderSeq += 1
 })
 </script>
@@ -137,10 +184,7 @@ onUnmounted(() => {
         @keydown.escape="emit('close')"
       >
         <div class="header">
-          <div class="header-text">
-            <span id="mermaid-export-title" class="title">Mermaid</span>
-            <span class="scope-label">{{ scopeLabel }}</span>
-          </div>
+          <span id="mermaid-export-title" class="title">Mermaid</span>
           <button type="button" class="icon-btn" aria-label="Close" @click="emit('close')"><X :size="16" /></button>
         </div>
 
@@ -161,7 +205,30 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="body">
+        <div class="viewport">
+          <button
+            v-if="view === 'code'"
+            type="button"
+            class="corner-btn"
+            :class="{ copied }"
+            :aria-label="copied ? 'Copied' : 'Copy Mermaid code'"
+            :title="copied ? 'Copied' : 'Copy'"
+            @click="copyCode"
+          >
+            <Check v-if="copied" :size="14" />
+            <Copy v-else :size="14" />
+          </button>
+          <button
+            v-else-if="svgHtml && !rendering && !renderError"
+            type="button"
+            class="corner-btn"
+            aria-label="Download SVG"
+            title="Download SVG"
+            @click="downloadSvg"
+          >
+            <Download :size="14" />
+          </button>
+          <div class="body">
           <pre
             v-if="view === 'code'"
             class="mmd-preview"
@@ -173,6 +240,7 @@ onUnmounted(() => {
             <div v-else-if="rendering" class="diagram-state">Rendering…</div>
             <div v-else-if="renderError" class="diagram-state error">{{ renderError }}</div>
             <div v-else class="diagram-frame" v-html="svgHtml" />
+          </div>
           </div>
         </div>
 
@@ -219,27 +287,12 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--c-panel-border);
 }
 
-.header-text {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-}
-
 .title {
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--c-panel-label);
-}
-
-.scope-label {
-  font-size: 11px;
-  color: var(--c-field-type);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .icon-btn {
@@ -303,10 +356,46 @@ onUnmounted(() => {
   color: var(--c-btn-active-fg);
 }
 
-.body {
+.viewport {
+  position: relative;
   flex: 1;
   min-height: 0;
   margin: 12px 16px 16px;
+}
+
+.corner-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--c-btn-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--c-panel-bg) 88%, transparent);
+  color: var(--c-panel-label);
+  cursor: pointer;
+}
+
+.corner-btn:hover {
+  background: var(--c-btn-hover-bg);
+  color: var(--c-btn-fg);
+}
+
+.corner-btn.copied {
+  color: #15803d;
+}
+
+:global(html[data-theme='dark']) .corner-btn.copied {
+  color: #4ade80;
+}
+
+.body {
+  height: 100%;
   border: 1px solid var(--c-panel-border);
   border-radius: 6px;
   background: var(--c-canvas-bg);
@@ -315,7 +404,7 @@ onUnmounted(() => {
 
 .mmd-preview {
   margin: 0;
-  padding: 10px;
+  padding: 10px 40px 10px 10px;
   min-height: 100%;
   box-sizing: border-box;
   font-family: var(--font-mono);
