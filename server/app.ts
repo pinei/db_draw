@@ -21,6 +21,7 @@ import {
   saveModelFiles,
   mergeModelPatch,
   isModelSavePatch,
+  stripUiLayoutPrefs,
   touchLastModel,
   userDir,
   writeScopeFile,
@@ -342,10 +343,7 @@ export function createApiRouter(opts: AppOptions): Router {
       // Scopes live in their own files — never inside the model .json
       delete body.scopes
       if (body.layout && typeof body.layout === 'object') {
-        const layout = body.layout as Record<string, unknown>
-        delete layout.codeFormat
-        delete layout.codePanelOpen
-        delete layout.theme
+        body.layout = stripUiLayoutPrefs(body.layout as Record<string, unknown>)
       }
       saveModelFiles(home, name, body, dbml, mermaid)
       touchLastModel(home, name)

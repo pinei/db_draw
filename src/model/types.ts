@@ -161,7 +161,8 @@ export interface DiagramState {
 
 // Keys of DiagramLayout that are UI preferences, not diagram properties —
 // they live in memory only and are stripped before writing data/:name/*.json.
-export type UiPreferenceKey = 'codePanelOpen' | 'sidePanelView' | 'theme'
+// Zoom/pan (canvasOffset/canvasScale) persist per browser via viewportStore.
+export type UiPreferenceKey = 'codePanelOpen' | 'sidePanelView' | 'theme' | 'canvasOffset' | 'canvasScale'
 
 export type PersistedDiagramLayout = Omit<DiagramLayout, UiPreferenceKey>
 

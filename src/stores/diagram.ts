@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, toRaw, watch } from 'vue'
-import type { DiagramState, ErScope, PersistedDiagramState, ConnectorStyle, NotationStyle, SidePanelView, ThemeMode, EntityRect, CustomConnectionPoints, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel, DraggingRoute, RouteOverride, SelfLoopCorner, SelfLoopRouteOverride } from '../model/types'
+import type { DiagramState, DiagramLayout, ErScope, PersistedDiagramState, ConnectorStyle, NotationStyle, SidePanelView, ThemeMode, EntityRect, CustomConnectionPoints, DraggingConnectorPoint, CustomConnectorEndpoint, LabelPosition, DraggingLabel, DraggingRoute, RouteOverride, SelfLoopCorner, SelfLoopRouteOverride } from '../model/types'
 import { bibliotecaSchema } from '../model/sampleData'
 import {
   SELF_LOOP_DEFAULT_EXTENT,
@@ -11,6 +11,7 @@ import { pickFreeSelfLoopCorner } from '../utils/connectionPoints'
 import { saveModel, saveModelSlices, anySaveSlice, AuthError, listModels, loadModel, listScopes, saveScope, deleteScope as deleteScopeFile, type ModelSaveSlices } from '../utils/persist'
 import { compileDbml, buildDbmlPatch, type DbmlApplyStats, type DbmlIssueLine } from '../utils/dbmlImport'
 import { defaultMeta, sanitizeTags, seedMeta } from '../utils/modelMeta'
+import { clampCanvasScale, readViewport, sanitizeViewport, viewportKey, writeViewport, type Viewport } from '../utils/viewportStore'
 import { useAuthStore } from './auth'
 
 const MODEL_KEY = 'dbdraw.model.id'
@@ -313,8 +314,54 @@ export const useDiagramStore = defineStore('diagram', () => {
   }
 
   function setCanvasScale(scale: number) {
-    // Clamp scale between 0.2x and 3x
-    state.value.layout.canvasScale = Math.min(3, Math.max(0.2, scale))
+    state.value.layout.canvasScale = clampCanvasScale(scale)
+  }
+
+  // ─── Viewport (zoom/pan) — localStorage per user + model + scope ──────────
+  // Never dirties a save slice: panning a (future read-only) model is free.
+
+  let viewportTimer: ReturnType<typeof setTimeout> | null = null
+  let viewportPendingKey: string | null = null
+
+  function viewportKeyFor(modelId: string, scopeId: string | null): string | null {
+    const email = useAuthStore().email
+    return email ? viewportKey(email, modelId, scopeId) : null
+  }
+
+  function currentViewport(): Viewport {
+    const { canvasOffset, canvasScale } = state.value.layout
+    return { offset: { x: canvasOffset.x, y: canvasOffset.y }, scale: canvasScale }
+  }
+
+  function flushViewport() {
+    if (viewportTimer) {
+      clearTimeout(viewportTimer)
+      viewportTimer = null
+    }
+    if (viewportPendingKey) writeViewport(viewportPendingKey, currentViewport())
+    viewportPendingKey = null
+  }
+
+  function scheduleViewportWrite() {
+    const key = viewportKeyFor(currentModelId.value, activeScopeId.value)
+    if (!key) return
+    if (viewportPendingKey && viewportPendingKey !== key) flushViewport()
+    viewportPendingKey = key
+    if (viewportTimer) clearTimeout(viewportTimer)
+    viewportTimer = setTimeout(flushViewport, 300)
+  }
+
+  /** Apply the saved viewport for a key; returns false when nothing was saved. */
+  function applyViewport(vp: Viewport | null): boolean {
+    if (!vp) return false
+    state.value.layout.canvasOffset = { ...vp.offset }
+    state.value.layout.canvasScale = vp.scale
+    return true
+  }
+
+  function applySavedViewport(modelId: string, scopeId: string | null): boolean {
+    const key = viewportKeyFor(modelId, scopeId)
+    return applyViewport(key ? readViewport(key) : null)
   }
 
   /** Reset zoom to 1x and center the visible content in the viewport.
@@ -623,6 +670,7 @@ export const useDiagramStore = defineStore('diagram', () => {
       clearTimeout(saveTimer)
       saveTimer = null
     }
+    flushViewport()
     suppressDirty = true
     state.value = buildInitialState()
     clearDirty()
@@ -711,6 +759,14 @@ export const useDiagramStore = defineStore('diagram', () => {
       clearTimeout(saveTimer)
       saveTimer = null
     }
+    flushViewport()
+    // Legacy artifacts still carry zoom/pan in layout — used only as the
+    // first-open fallback when this browser has no saved viewport
+    const legacyLayout = loaded.layout as Partial<DiagramLayout>
+    const legacyViewport = sanitizeViewport({
+      offset: legacyLayout.canvasOffset,
+      scale: legacyLayout.canvasScale,
+    })
     suppressDirty = true
     state.value = {
       ...loaded,
@@ -727,15 +783,18 @@ export const useDiagramStore = defineStore('diagram', () => {
         sidePanelView: 'code',
         theme: 'system',
         ...loaded.layout,
+        canvasOffset: { x: 0, y: 0 },
+        canvasScale: 1,
         notationStyle: validNotations.includes(loaded.layout.notationStyle)
           ? loaded.layout.notationStyle
           : 'crowsfoot',
       },
     }
+    activeScopeId.value = null
+    if (!applySavedViewport(modelId, null)) applyViewport(legacyViewport)
     clearDirty()
     dirtyScopeIds.value.clear()
     suppressDirty = false
-    activeScopeId.value = null
     saveStatus.value = 'idle'
   }
 
@@ -808,10 +867,14 @@ export const useDiagramStore = defineStore('diagram', () => {
       state.value.routeOverrides,
       state.value.layout.connectorStyle,
       state.value.layout.notationStyle,
-      state.value.layout.canvasOffset,
-      state.value.layout.canvasScale,
     ],
     () => markDirty('presentation'),
+    { deep: true },
+  )
+  // Zoom/pan → localStorage only (debounced), never a model save
+  watch(
+    () => [state.value.layout.canvasOffset, state.value.layout.canvasScale],
+    () => { if (!suppressDirty) scheduleViewportWrite() },
     { deep: true },
   )
 
@@ -828,7 +891,12 @@ export const useDiagramStore = defineStore('diagram', () => {
   }
 
   function setActiveScope(id: string | null) {
-    activeScopeId.value = id && state.value.scopes[id] ? id : null
+    const next = id && state.value.scopes[id] ? id : null
+    if (next === activeScopeId.value) return
+    flushViewport()
+    activeScopeId.value = next
+    // Each scope (and the full model) remembers its own zoom/pan; first visit centers
+    if (!applySavedViewport(currentModelId.value, next)) resetCanvasView()
   }
 
   /** Reload scopes from the server (called after model open/load). */

@@ -383,12 +383,15 @@ export function saveModelFiles(
   writeFileSync(join(dir, `${name}.mermaid`), mermaid, 'utf-8')
 }
 
-function stripUiLayoutPrefs(layout: Record<string, unknown>): Record<string, unknown> {
+/** UI-only layout keys — never part of the model artifact (zoom/pan live in the browser). */
+export function stripUiLayoutPrefs(layout: Record<string, unknown>): Record<string, unknown> {
   const next = { ...layout }
   delete next.codeFormat
   delete next.codePanelOpen
   delete next.sidePanelView
   delete next.theme
+  delete next.canvasOffset
+  delete next.canvasScale
   return next
 }
 
@@ -450,7 +453,7 @@ export function mergeModelPatch(
     if (p.routeOverrides !== undefined) next.routeOverrides = p.routeOverrides
     if (p.layout !== undefined && p.layout && typeof p.layout === 'object') {
       const prevLayout = (next.layout && typeof next.layout === 'object')
-        ? next.layout as Record<string, unknown>
+        ? stripUiLayoutPrefs(next.layout as Record<string, unknown>)
         : {}
       next.layout = {
         ...prevLayout,
@@ -471,8 +474,6 @@ export function mergeModelPatch(
       next.layout = {
         connectorStyle: 'curved',
         notationStyle: 'crowsfoot',
-        canvasOffset: { x: 0, y: 0 },
-        canvasScale: 1,
       }
     }
   }
