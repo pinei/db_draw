@@ -1,21 +1,30 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { Annotation, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state'
+import { Decoration, EditorView, keymap, lineNumbers, type DecorationSet } from '@codemirror/view'
 import { CircleQuestionMark, X } from 'lucide-vue-next'
 import { useDiagramStore } from '../stores/diagram'
 import { generateDbml } from '../utils/codePlaceholder'
-import { highlightDbml } from '../utils/dbmlHighlight'
 import type { DbmlApplyStats, DbmlIssueLine } from '../utils/dbmlImport'
 
 const store = useDiagramStore()
-const textareaEl = ref<HTMLTextAreaElement | null>(null)
+const editorHost = ref<HTMLElement | null>(null)
+let editor: EditorView | null = null
 
-// Local draft kept in sync with external schema changes (e.g. loadState)
-const draftDbml = ref('')
-watch(
-  () => generateDbml(store.state.schema),
-  (generated) => { draftDbml.value = generated },
-  { immediate: true },
-)
+const schemaSync = Annotation.define<boolean>()
+const setErrorLines = StateEffect.define<DecorationSet>()
+const errorLine = Decoration.line({ class: 'dbml-error-line' })
+const errorDecorations = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(decorations, transaction) {
+    for (const effect of transaction.effects) {
+      if (effect.is(setErrorLines)) return effect.value
+    }
+    return transaction.docChanged ? Decoration.none : decorations
+  },
+  provide: (field) => EditorView.decorations.from(field),
+})
 
 const parseStatus = ref<'idle' | 'success' | 'error'>('idle')
 const parseMessage = ref('')
@@ -57,95 +66,101 @@ const errorLines = computed(() => {
     .filter(Boolean)
 })
 
-const errorLineSet = computed(() => {
-  const set = new Set<number>()
-  for (const e of applyIssues.value) {
-    if (e.line > 0) set.add(e.line)
-  }
-  return set
-})
-
-function dismissApplyResult() {
+function clearApplyResult() {
   parseStatus.value = 'idle'
   parseMessage.value = ''
   applyStats.value = null
   applyIssues.value = []
 }
 
-// ─── Syntax highlighting (overlay) ───────────────────────────────────────────
-// Highlighted <pre> sits under a transparent <textarea>. Same font metrics +
-// scroll sync keep caret and tokens aligned while typing. Table names come
-// from the live schema.
+function dismissApplyResult() {
+  clearApplyResult()
+  editor?.dispatch({ effects: setErrorLines.of(Decoration.none) })
+}
 
-const tableNames = computed(() => store.state.schema.entities.map((e) => e.name))
+function createEditorState(doc: string) {
+  return EditorState.create({
+    doc,
+    extensions: [
+      EditorState.tabSize.of(2),
+      EditorView.lineWrapping,
+      EditorView.contentAttributes.of({ 'aria-label': 'DBML code', spellcheck: 'false' }),
+      lineNumbers(),
+      history(),
+      errorDecorations,
+      keymap.of([
+        { key: 'Escape', run: (view) => { view.contentDOM.blur(); return true } },
+        ...defaultKeymap,
+        ...historyKeymap,
+      ]),
+      EditorView.updateListener.of((update) => {
+        if (update.transactions.some((transaction) => transaction.docChanged && !transaction.annotation(schemaSync))) {
+          clearApplyResult()
+        }
+      }),
+    ],
+  })
+}
 
-const highlightedHtml = computed(() => {
-  const src = draftDbml.value
-  const html = highlightDbml(src, tableNames.value, errorLineSet.value)
-  // <pre> drops a trailing newline — keep it so the last line never collapses
-  return src.endsWith('\n') ? html + '\n' : html
+const generatedDbml = computed(() => generateDbml(store.state.schema))
+
+onMounted(() => {
+  if (editorHost.value) {
+    editor = new EditorView({ parent: editorHost.value, state: createEditorState(generatedDbml.value) })
+  }
 })
 
-const previewEl = ref<HTMLElement | null>(null)
+onBeforeUnmount(() => {
+  editor?.destroy()
+  editor = null
+})
 
-function syncScroll() {
-  const ta = textareaEl.value
-  const pre = previewEl.value
-  if (!ta || !pre) return
-  pre.scrollTop = ta.scrollTop
-  pre.scrollLeft = ta.scrollLeft
-}
-
-function onInput(e: Event) {
-  draftDbml.value = (e.target as HTMLTextAreaElement).value
-  // User edits invalidate the last Apply banner; schema→draft sync after
-  // Apply must NOT (that used to clear the banner in the same tick).
-  dismissApplyResult()
-  // Re-highlight can change wrap height; keep layers locked after paint
-  nextTick(syncScroll)
-}
-
-function blurOnEscape(e: KeyboardEvent) {
-  (e.target as HTMLTextAreaElement).blur()
-}
+watch([() => store.currentModelId, generatedDbml], ([modelId, generated], [previousModelId]) => {
+  if (!editor) return
+  if (modelId !== previousModelId) {
+    clearApplyResult()
+    editor.setState(createEditorState(generated))
+  } else if (editor.state.doc.toString() !== generated) {
+    if (parseStatus.value === 'error') clearApplyResult()
+    editor.dispatch({
+      changes: { from: 0, to: editor.state.doc.length, insert: generated },
+      annotations: [schemaSync.of(true), Transaction.addToHistory.of(false)],
+    })
+  }
+})
 
 function handleApply() {
   // Single-step incremental sync: validates, diffs by exact name and patches
   // the schema in one mutation. Matched ids (hence layout) are preserved; the
   // draft resyncs from the new schema through the generateDbml watcher.
-  const result = store.applyDbml(draftDbml.value)
+  const view = editor
+  if (!view) return
+  const result = store.applyDbml(view.state.doc.toString())
   if (result.success) {
     parseStatus.value = 'success'
     parseMessage.value = ''
     applyStats.value = result.stats
     applyIssues.value = []
+    view.dispatch({ effects: setErrorLines.of(Decoration.none) })
   } else {
     parseStatus.value = 'error'
     parseMessage.value = result.message
     applyStats.value = null
     applyIssues.value = result.issues
-    const first = result.issues[0]?.line
-    if (first) nextTick(() => scrollToLine(first))
+    const doc = view.state.doc
+    const lines = [...new Set(result.issues.map(({ line }) => line))]
+      .filter((line) => line >= 1 && line <= doc.lines)
+    const positions = lines.map((line) => doc.line(line).from)
+    view.dispatch({ effects: setErrorLines.of(Decoration.set(positions.map((pos) => errorLine.range(pos)), true)) })
+    const first = positions[0]
+    if (first !== undefined) {
+      nextTick(() => {
+        if (editor !== view || view.state.doc !== doc) return
+        view.focus()
+        view.dispatch({ selection: { anchor: first }, effects: EditorView.scrollIntoView(first, { y: 'center' }) })
+      })
+    }
   }
-}
-
-function scrollToLine(line: number) {
-  const ta = textareaEl.value
-  if (!ta || line < 1) return
-  const text = ta.value
-  let pos = 0
-  for (let i = 1; i < line; i++) {
-    const next = text.indexOf('\n', pos)
-    if (next < 0) { pos = text.length; break }
-    pos = next + 1
-  }
-  ta.focus()
-  ta.setSelectionRange(pos, pos)
-  // Approximate scroll: line height from computed style
-  const lh = parseFloat(getComputedStyle(ta).lineHeight) || 18
-  const pad = parseFloat(getComputedStyle(ta).paddingTop) || 0
-  ta.scrollTop = Math.max(0, (line - 1) * lh - ta.clientHeight / 3 + pad)
-  syncScroll()
 }
 </script>
 
@@ -163,25 +178,7 @@ function scrollToLine(line: number) {
           DBML Syntax
         </a>
 
-        <div class="code-area-wrapper">
-          <pre
-            ref="previewEl"
-            class="code-layer code-preview backdrop"
-            aria-hidden="true"
-            v-html="highlightedHtml"
-          />
-          <textarea
-            ref="textareaEl"
-            class="code-layer code-area"
-            :value="draftDbml"
-            spellcheck="false"
-            wrap="soft"
-            aria-label="DBML code"
-            @input="onInput"
-            @scroll="syncScroll"
-            @keydown.escape="blurOnEscape"
-          />
-        </div>
+        <div ref="editorHost" class="code-area-wrapper" />
 
         <button class="apply-btn" @click="handleApply">Apply</button>
 
@@ -263,9 +260,8 @@ function scrollToLine(line: number) {
 }
 
 .code-area-wrapper {
-  position: relative;
   flex: 1;
-  min-height: 200px;
+  min-height: 0;
   width: 100%;
   border: 1px solid var(--c-panel-border);
   border-radius: 6px;
@@ -273,60 +269,39 @@ function scrollToLine(line: number) {
   background: var(--c-canvas-bg);
 }
 
-/* Shared box for highlight <pre> and edit <textarea> — identical metrics so
-   soft-wrap and caret stay aligned. Both are absolute fills of the wrapper. */
-.code-layer {
-  position: absolute;
-  inset: 0;
-  box-sizing: border-box;
-  width: 100%;
+.code-area-wrapper:focus-within {
+  border-color: var(--c-entity-border-hover);
+}
+
+.code-area-wrapper :deep(.cm-editor) {
   height: 100%;
-  margin: 0;
-  padding: 10px;
-  border: none;
-  font-family: var(--font-mono);
   font-size: 11px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  word-wrap: break-word;
-  tab-size: 2;
-  overflow: auto;
-  scrollbar-gutter: stable;
-}
-
-.code-preview {
-  background: transparent;
   color: var(--c-field-name);
-  cursor: default;
+}
+
+.code-area-wrapper :deep(.cm-editor.cm-focused) {
   outline: none;
-  z-index: 0;
 }
 
-/* Under the textarea: ignore pointer + hide scrollbar (textarea scrolls). */
-.code-preview.backdrop {
-  pointer-events: none;
-  scrollbar-width: none;
+.code-area-wrapper :deep(.cm-scroller) {
+  font-family: var(--font-mono);
+  line-height: 1.6;
 }
 
-.code-preview.backdrop::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-}
-
-.code-area {
-  z-index: 1;
-  resize: none;
-  background: transparent;
-  color: transparent;
+.code-area-wrapper :deep(.cm-content) {
+  padding-block: 10px;
   caret-color: var(--c-field-name);
-  outline: none;
-  cursor: text;
 }
 
-.code-area::selection {
-  background: color-mix(in srgb, var(--c-btn-active-bg) 35%, transparent);
-  color: transparent;
+.code-area-wrapper :deep(.cm-gutters) {
+  background: var(--c-canvas-bg);
+  color: var(--c-panel-label);
+  border-color: var(--c-panel-border);
+}
+
+.code-area-wrapper :deep(.dbml-error-line) {
+  background: rgba(239, 68, 68, 0.22);
+  box-shadow: inset 2px 0 0 #ef4444;
 }
 
 .apply-btn {
@@ -503,39 +478,4 @@ html[data-theme='dark'] .apply-title {
 html[data-theme='dark'] .apply-col li.added { color: #4ade80; }
 html[data-theme='dark'] .apply-col li.removed { color: #f87171; }
 html[data-theme='dark'] .apply-col li.updated { color: #fbbf24; }
-</style>
-
-<style>
-/* ── Highlight tokens (unscoped: spans are injected via v-html) ───────────── */
-.code-preview .tok-kw      { color: #1d4ed8; font-weight: 600; }
-.code-preview .tok-table   { color: #0f766e; }
-.code-preview .tok-type    { color: #15803d; }
-.code-preview .tok-pk      { color: #b45309; font-weight: 600; }
-.code-preview .tok-annot   { color: #475569; }
-.code-preview .tok-op      { color: #7c3aed; }
-.code-preview .tok-comment { color: var(--c-panel-label); font-style: italic; }
-.code-preview .tok-str     { color: #0e7490; }
-.code-preview .tok-num     { color: #9333ea; }
-
-html[data-theme='dark'] .code-preview .tok-kw      { color: #60a5fa; }
-html[data-theme='dark'] .code-preview .tok-table   { color: #2dd4bf; }
-html[data-theme='dark'] .code-preview .tok-type    { color: #4ade80; }
-html[data-theme='dark'] .code-preview .tok-pk      { color: #fbbf24; }
-html[data-theme='dark'] .code-preview .tok-annot   { color: #94a3b8; }
-html[data-theme='dark'] .code-preview .tok-op      { color: #c084fc; }
-html[data-theme='dark'] .code-preview .tok-str     { color: #22d3ee; }
-html[data-theme='dark'] .code-preview .tok-num     { color: #d8b4fe; }
-
-.code-preview .tok-err-line {
-  background: rgba(239, 68, 68, 0.55);
-  box-shadow: inset 3px 0 0 #ef4444;
-  border-radius: 2px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-
-html[data-theme='dark'] .code-preview .tok-err-line {
-  background: rgba(239, 68, 68, 0.42);
-  box-shadow: inset 3px 0 0 #f87171;
-}
 </style>

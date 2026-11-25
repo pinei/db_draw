@@ -11,6 +11,9 @@
     "admin-cli": "node admin-cli.js"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.44.0",
     "@dbml/parse": "^10.1.1",
     "express": "^5.2.1",
     "html2canvas": "^1.4.1",
