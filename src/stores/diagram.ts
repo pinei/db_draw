@@ -587,6 +587,29 @@ export const useDiagramStore = defineStore('diagram', () => {
     | { success: false; message: string; issues: DbmlIssueLine[] } {
     const compiled = compileDbml(text)
     if (!compiled.ok) return { success: false, message: compiled.message, issues: compiled.issues }
+    if (compiled.value.tables.length === 0) {
+      const previousProject = JSON.stringify(state.value.schema.project ?? null)
+      const projectChanged = previousProject !== JSON.stringify(compiled.value.project)
+      if (projectChanged) {
+        if (compiled.value.project) state.value.schema.project = compiled.value.project
+        else delete state.value.schema.project
+      }
+      return {
+        success: true,
+        stats: {
+          tables: 0,
+          rels: 0,
+          projectChanged,
+          createdEntities: 0,
+          removedEntities: 0,
+          changedEntities: 0,
+          createdRels: 0,
+          removedRels: 0,
+          changedRels: 0,
+          ignored: compiled.value.ignored,
+        },
+      }
+    }
     const patch = buildDbmlPatch(state.value.schema, compiled.value)
 
     const positions: Record<string, EntityRect> = { ...state.value.entityPositions }

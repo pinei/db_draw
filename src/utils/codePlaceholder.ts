@@ -1,4 +1,4 @@
-import type { ErSchema, ErEntity, ErField, ErRelationship, Cardinality, LogicalCardinality } from '../model/types'
+import type { ErSchema, ErEntity, ErField, ErProject, ErRelationship, Cardinality, LogicalCardinality } from '../model/types'
 
 // ─── DBML serializer ─────────────────────────────────────────────────────────
 // FKs are expressed ONLY as explicit Ref: lines (never as inline [ref: ...]):
@@ -14,6 +14,16 @@ function dbmlNoteValue(value: string): string {
     return `'''${value.replace(/\r\n/g, '\n')}'''`
   }
   return `'${escapeDbmlString(value)}'`
+}
+
+function dbmlProjectBlock(project: ErProject): string {
+  const lines: string[] = []
+  if (project.databaseType !== undefined) {
+    lines.push(`  database_type: '${escapeDbmlString(project.databaseType)}'`)
+  }
+  if (project.note !== undefined) lines.push(`  Note: ${dbmlNoteValue(project.note)}`)
+  const name = project.name ? ` ${project.name}` : ''
+  return `Project${name} {${lines.length ? `\n${lines.join('\n')}\n` : '\n'}}`
 }
 
 function dbmlFieldLine(f: ErField, notNull: boolean): string {
@@ -98,6 +108,7 @@ export function generateDbml(schema: ErSchema): string {
 
   // Blank line between tables and before the Refs block; Refs stay packed
   const parts: string[] = []
+  if (schema.project) parts.push(dbmlProjectBlock(schema.project))
   if (tables.length) parts.push(tables.join('\n\n'))
   if (refs.length) parts.push(refs.join('\n'))
   return parts.join('\n\n')

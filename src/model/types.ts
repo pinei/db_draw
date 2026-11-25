@@ -36,9 +36,16 @@ export interface ErRelationship {
   refComment?: string
 }
 
+export interface ErProject {
+  name?: string | null
+  databaseType?: string
+  note?: string
+}
+
 export interface ErSchema {
   entities: ErEntity[]
   relationships: ErRelationship[]
+  project?: ErProject
 }
 
 // ─── Model metadata (per-model management) ──────────────────────────────────

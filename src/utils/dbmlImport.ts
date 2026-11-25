@@ -10,7 +10,7 @@
 // - only genuinely new relationships get default cardinalities from the operator.
 // New ids/positions are assigned by the store action (placement needs layout).
 
-import type { Cardinality, ErEntity, ErRelationship, ErSchema } from '../model/types'
+import type { Cardinality, ErEntity, ErField, ErProject, ErRelationship, ErSchema } from '../model/types'
 import { Compiler, MemoryProjectLayout, Filepath } from '@dbml/parse'
 
 // ─── Parsed shapes (structural — runtime keys differ from the lib's docs) ────
@@ -61,6 +61,11 @@ interface ParsedDb {
   enums?: unknown[]
   tableGroups?: unknown[]
   notes?: unknown[]
+  project?: {
+    name?: string | null
+    database_type?: unknown
+    note?: { value?: unknown }
+  }
 }
 
 interface DbmlIssue {
@@ -94,6 +99,7 @@ export interface CompiledDbml {
   tables: ParsedTable[]
   refs: NormalizedRef[]
   ignored: number
+  project: ErProject | null
 }
 
 function offsetToLineCol(text: string, offset: unknown): { line: number; col: number; label: string } {
@@ -211,7 +217,12 @@ export function compileDbml(
   if (!db) return fail('Error: parse produced no result')
 
   const tables = (db.tables ?? []).filter((t) => typeof t.name === 'string')
-  if (tables.length === 0) {
+  const project: ErProject | null = db.project ? {
+    ...(typeof db.project.name === 'string' || db.project.name === null ? { name: db.project.name } : {}),
+    ...(typeof db.project.database_type === 'string' ? { databaseType: db.project.database_type } : {}),
+    ...(typeof db.project.note?.value === 'string' ? { note: db.project.note.value } : {}),
+  } : null
+  if (tables.length === 0 && !db.project) {
     return fail('Nothing to apply — no Table blocks in code')
   }
   const knownTables = new Set(tables.map((t) => t.name as string))
@@ -299,7 +310,7 @@ export function compileDbml(
     }
   }
 
-  return { ok: true, value: { tables, refs: deduped, ignored } }
+  return { ok: true, value: { tables, refs: deduped, ignored, project } }
 }
 
 function refKey(r: NormalizedRef): string {
@@ -360,6 +371,7 @@ export interface DbmlPatch {
 export interface DbmlApplyStats {
   tables: number
   rels: number
+  projectChanged?: boolean
   createdEntities: number
   removedEntities: number
   changedEntities: number
@@ -567,7 +579,13 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
     }
   }
 
-  const schema: ErSchema = { entities: nextEntities, relationships: nextRels }
+  const currentProject = JSON.stringify(current.project ?? null)
+  const nextProject = JSON.stringify(compiled.project)
+  const schema: ErSchema = {
+    entities: nextEntities,
+    relationships: nextRels,
+    ...(compiled.project ? { project: compiled.project } : {}),
+  }
   const stats = {
     tables: nextEntities.length,
     rels: nextRels.length,
@@ -577,6 +595,7 @@ export function buildDbmlPatch(current: ErSchema, compiled: CompiledDbml): DbmlP
     createdRels,
     removedRels: removedRelIds.length,
     changedRels,
+    projectChanged: currentProject !== nextProject,
     ignored: compiled.ignored,
   }
   return {

@@ -55,7 +55,11 @@ const relDiff = computed(() => {
 })
 
 const applyUnchanged = computed(() =>
-  !!applyStats.value && tableDiff.value.length === 0 && relDiff.value.length === 0,
+  !!applyStats.value && tableDiff.value.length === 0 && relDiff.value.length === 0 && !applyStats.value.projectChanged,
+)
+
+const projectOnlyApply = computed(() =>
+  !!applyStats.value && applyStats.value.tables === 0 && applyStats.value.rels === 0,
 )
 
 const errorLines = computed(() => {
@@ -187,13 +191,16 @@ function handleApply() {
         <div v-if="parseStatus === 'success' && applyStats" class="parse-message success">
           <button type="button" class="apply-dismiss" title="Dismiss" aria-label="Dismiss" @click="dismissApplyResult"><X :size="12" /></button>
           <div class="apply-title">Applied</div>
-          <div class="apply-totals">
+          <div v-if="projectOnlyApply" class="apply-totals">
+            {{ applyStats.projectChanged ? 'Project settings updated' : 'Project settings unchanged' }}
+          </div>
+          <div v-else class="apply-totals">
             {{ applyStats.tables }} {{ applyStats.tables === 1 ? 'table' : 'tables' }}
             ·
             {{ applyStats.rels }} {{ applyStats.rels === 1 ? 'relationship' : 'relationships' }}
           </div>
-          <div v-if="applyUnchanged" class="apply-note">No changes</div>
-          <div v-else class="apply-diff">
+          <div v-if="!projectOnlyApply && applyUnchanged" class="apply-note">No changes</div>
+          <div v-else-if="!projectOnlyApply" class="apply-diff">
             <div v-if="tableDiff.length" class="apply-col">
               <div class="apply-col-label">Tables</div>
               <ul>
