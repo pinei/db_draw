@@ -7,6 +7,7 @@ import { CircleQuestionMark, X } from 'lucide-vue-next'
 import { useDiagramStore } from '../stores/diagram'
 import { generateDbml } from '../utils/codePlaceholder'
 import type { DbmlApplyStats, DbmlIssueLine } from '../utils/dbmlImport'
+import { dbmlSupport } from '../utils/dbmlLanguage'
 
 const store = useDiagramStore()
 const editorHost = ref<HTMLElement | null>(null)
@@ -87,6 +88,7 @@ function createEditorState(doc: string) {
       EditorView.contentAttributes.of({ 'aria-label': 'DBML code', spellcheck: 'false' }),
       lineNumbers(),
       history(),
+      dbmlSupport,
       errorDecorations,
       keymap.of([
         { key: 'Escape', run: (view) => { view.contentDOM.blur(); return true } },
@@ -298,6 +300,38 @@ function handleApply() {
   color: var(--c-panel-label);
   border-color: var(--c-panel-border);
 }
+
+.code-area-wrapper {
+  --c-dbml-keyword: #1d4ed8;
+  --c-dbml-table: #0e6471;
+  --c-dbml-type: #166534;
+  --c-dbml-setting: #6b21a8;
+  --c-dbml-operator: #9a3412;
+  --c-dbml-string: #9d174d;
+  --c-dbml-value: #854d0e;
+  --c-dbml-comment: #526074;
+}
+
+:global(html[data-theme='dark'] .code-area-wrapper) {
+  --c-dbml-keyword: #93c5fd;
+  --c-dbml-table: #67e8f9;
+  --c-dbml-type: #86efac;
+  --c-dbml-setting: #d8b4fe;
+  --c-dbml-operator: #fdba74;
+  --c-dbml-string: #f9a8d4;
+  --c-dbml-value: #fde68a;
+  --c-dbml-comment: #a7b3c5;
+}
+
+.code-area-wrapper :deep(.dbml-keyword) { color: var(--c-dbml-keyword); }
+.code-area-wrapper :deep(.dbml-table) { color: var(--c-dbml-table); }
+.code-area-wrapper :deep(.dbml-field) { color: var(--c-field-name); }
+.code-area-wrapper :deep(.dbml-type) { color: var(--c-dbml-type); }
+.code-area-wrapper :deep(.dbml-setting) { color: var(--c-dbml-setting); }
+.code-area-wrapper :deep(.dbml-operator) { color: var(--c-dbml-operator); }
+.code-area-wrapper :deep(.dbml-string) { color: var(--c-dbml-string); }
+.code-area-wrapper :deep(.dbml-value) { color: var(--c-dbml-value); }
+.code-area-wrapper :deep(.dbml-comment) { color: var(--c-dbml-comment); }
 
 .code-area-wrapper :deep(.dbml-error-line) {
   background: rgba(239, 68, 68, 0.22);
