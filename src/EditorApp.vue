@@ -11,6 +11,7 @@ import ModelBar from './components/ModelBar.vue'
 
 const store = useDiagramStore()
 const auth = useAuthStore()
+const isKofiEnabled = import.meta.env.ENABLE_FEATURE_KOFI
 
 // ─── Theme application ──────────────────────────────────────────────────────
 const systemMedia = window.matchMedia('(prefers-color-scheme: dark)')
@@ -79,7 +80,7 @@ onUnmounted(() => {
     <DiagramCanvas />
     <SidePanel />
     <div class="settings-stack">
-      <SupportKofi />
+      <SupportKofi v-if="isKofiEnabled" />
       <SettingsPanel />
     </div>
     <ModelBar />

@@ -1,6 +1,7 @@
 # ─── Build (Vue + typecheck) ────────────────────────────────────────────────
 FROM node:22-alpine AS build
 WORKDIR /app
+ARG ENABLE_FEATURE_KOFI=false
 
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -9,7 +10,7 @@ COPY index.html tsconfig.json tsconfig.app.json tsconfig.node.json vite.config.t
 COPY public ./public
 COPY src ./src
 COPY server ./server
-RUN npm run build
+RUN ENABLE_FEATURE_KOFI="$ENABLE_FEATURE_KOFI" npm run build
 
 # ─── Runtime (Express + /api) ───────────────────────────────────────────────
 FROM node:22-alpine AS runtime

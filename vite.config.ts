@@ -27,5 +27,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, '')
   return {
     plugins: [vue(), apiPlugin(env)],
+    define: {
+      'import.meta.env.ENABLE_FEATURE_KOFI': JSON.stringify(env.ENABLE_FEATURE_KOFI === 'true'),
+    },
   }
 })

@@ -1,6 +1,9 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        ENABLE_FEATURE_KOFI: ${ENABLE_FEATURE_KOFI:-false}
     image: dbdraw
     container_name: dbdraw
     restart: unless-stopped
